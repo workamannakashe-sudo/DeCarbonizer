@@ -1,0 +1,1144 @@
+// DeCarbonizer Application Logic
+
+// Carbon emission factors (kg CO2e)
+const EMISSION_FACTORS = {
+  // Transport: kg CO2e per km
+  transport: {
+    gas_suv: 0.26,
+    gas_medium: 0.18,
+    hybrid: 0.10,
+    electric: 0.04,
+    transit: 0.035,
+    walking_cycling: 0.0
+  },
+  // Diet: kg CO2e per day (baseline annual totals divided by 365)
+  diet: {
+    meat_heavy: 2800 / 365, // ~7.67 kg/day
+    meat_average: 2000 / 365, // ~5.48 kg/day
+    flexitarian: 1400 / 365,  // ~3.83 kg/day
+    vegetarian: 1100 / 365,   // ~3.01 kg/day
+    vegan: 750 / 365         // ~2.05 kg/day
+  },
+  // Food meal overrides (kg CO2e per single meal log)
+  meals: {
+    beef: 3.2,
+    chicken: 0.9,
+    vegetarian: 0.5,
+    vegan: 0.3,
+    average: 1.1
+  },
+  // Home Energy: kg CO2e per month per person
+  energy: {
+    grid: 140,
+    mixed: 70,
+    green: 8
+  },
+  // Flights: kg CO2e per flight
+  flights: {
+    short_haul: 180, // Under 3h
+    long_haul: 850,  // Over 3h
+    average: 450
+  },
+  // Consumption: kg CO2e per month
+  shopping: {
+    heavy: 120,
+    average: 55,
+    minimalist: 15
+  },
+  // Consumption item overrides (single log)
+  purchases: {
+    new_clothing: 11.5,
+    secondhand_clothing: 1.2,
+    electronics: 80.0,
+    furniture: 45.0,
+    miscellaneous: 5.0
+  },
+  // Waste: kg CO2e per month per person
+  waste: {
+    standard: 40,
+    recycling: 15
+  }
+};
+
+// National average annual footprints (kg CO2e per capita)
+const COUNTRY_AVERAGES = {
+  US: 16000,
+  UK: 6500,
+  EU: 7200,
+  IN: 2500,
+  GL: 4700 // Global average
+};
+
+const COUNTRY_NAMES = {
+  US: "United States",
+  UK: "United Kingdom",
+  EU: "European Union",
+  IN: "India",
+  GL: "Global Average"
+};
+
+// Default Micro-Habits template
+const HABITS_TEMPLATE = [
+  { id: 'h_transit', text: 'Swap 2 car drives for public transit this week', impact: 8.5, category: 'transport', applicable: ['gas_suv', 'gas_medium', 'hybrid'] },
+  { id: 'h_bike', text: 'Replace car trips under 3km with biking or walking', impact: 4.2, category: 'transport', applicable: ['gas_suv', 'gas_medium', 'hybrid', 'electric'] },
+  { id: 'h_meatless', text: 'Adopt Meatless Monday (completely plant-based for 1 day)', impact: 5.6, category: 'food', applicable: ['meat_heavy', 'meat_average', 'flexitarian'] },
+  { id: 'h_dairy', text: 'Choose oat/soy milk instead of dairy milk this week', impact: 2.1, category: 'food', applicable: ['meat_heavy', 'meat_average', 'flexitarian', 'vegetarian'] },
+  { id: 'h_unplug', text: 'Unplug stand-by appliances and chargers when not in use', impact: 1.8, category: 'energy', applicable: ['grid', 'mixed'] },
+  { id: 'h_wash', text: 'Wash clothes at 30°C and air dry instead of using the dryer', impact: 3.5, category: 'energy', applicable: ['grid', 'mixed'] },
+  { id: 'h_thrift', text: 'Buy secondhand or rent instead of purchasing new items', impact: 7.2, category: 'consumption', applicable: ['heavy', 'average'] },
+  { id: 'h_recycle', text: 'Compost organic scraps and strictly recycle all paper/metals', impact: 2.8, category: 'waste', applicable: ['standard'] }
+];
+
+// App State
+let state = {
+  onboarded: false,
+  profile: {
+    location: 'GL',
+    householdSize: 1,
+    transportMode: 'gas_medium',
+    weeklyKm: 50,
+    dietType: 'meat_average',
+    energySource: 'grid',
+    monthlyFlights: 0,
+    shoppingHabit: 'average',
+    baselineAnnual: 4700,
+    reductionGoal: 15 // % reduction
+  },
+  logs: [],
+  habits: []
+};
+
+// Onboarding Steps Definition
+const onboardingSteps = [
+  {
+    title: "Where are you located?",
+    desc: "Your location helps us compare your footprint to regional averages and set accurate baselines.",
+    html: `
+      <div class="slider-container">
+        <label class="stat-label">Select Country/Region</label>
+        <select id="ob-input-location" class="input-dropdown">
+          <option value="US">United States (Avg: ~16.0 tonnes/yr)</option>
+          <option value="UK">United Kingdom (Avg: ~6.5 tonnes/yr)</option>
+          <option value="EU">European Union (Avg: ~7.2 tonnes/yr)</option>
+          <option value="IN">India (Avg: ~2.5 tonnes/yr)</option>
+          <option value="GL" selected>Global Average (Avg: ~4.7 tonnes/yr)</option>
+        </select>
+        
+        <label class="stat-label" style="margin-top: 15px;">Household Size (people living together)</label>
+        <div class="slider-container" style="margin-top: 5px;">
+          <div class="slider-val-bubble" id="ob-val-household">1</div>
+          <input type="range" id="ob-input-household" class="custom-slider" min="1" max="8" value="1">
+        </div>
+      </div>
+    `,
+    init: () => {
+      const slider = document.getElementById('ob-input-household');
+      const bubble = document.getElementById('ob-val-household');
+      slider.addEventListener('input', (e) => {
+        bubble.textContent = e.target.value;
+      });
+    },
+    save: () => {
+      state.profile.location = document.getElementById('ob-input-location').value;
+      state.profile.householdSize = parseInt(document.getElementById('ob-input-household').value);
+    }
+  },
+  {
+    title: "How do you commute?",
+    desc: "Transportation is a massive source of personal carbon emissions. Select your main transport mode.",
+    html: `
+      <div class="card-selector" id="ob-transport-selector">
+        <div class="selection-card" data-val="gas_suv">
+          <span class="card-icon">🚗</span>
+          <span class="card-label">SUV/Large Gas Car</span>
+          <span class="card-subtext">High emissions</span>
+        </div>
+        <div class="selection-card selected" data-val="gas_medium">
+          <span class="card-icon">🚗</span>
+          <span class="card-label">Mid/Small Gas Car</span>
+          <span class="card-subtext">Average emissions</span>
+        </div>
+        <div class="selection-card" data-val="hybrid">
+          <span class="card-icon">🔌</span>
+          <span class="card-label">Hybrid Vehicle</span>
+          <span class="card-subtext">Moderate emissions</span>
+        </div>
+        <div class="selection-card" data-val="electric">
+          <span class="card-icon">⚡</span>
+          <span class="card-label">Electric Vehicle</span>
+          <span class="card-subtext">Low emissions</span>
+        </div>
+        <div class="selection-card" data-val="transit">
+          <span class="card-icon">🚌</span>
+          <span class="card-label">Public Transit</span>
+          <span class="card-subtext">Bus, subway, train</span>
+        </div>
+        <div class="selection-card" data-val="walking_cycling">
+          <span class="card-icon">🚲</span>
+          <span class="card-label">Active Transport</span>
+          <span class="card-subtext">Biking, walking</span>
+        </div>
+      </div>
+      <div class="slider-container" style="margin-top: 20px;">
+        <label class="stat-label">Approximate weekly distance: <span id="ob-val-km" style="color:var(--primary); font-weight:700;">50 km</span></label>
+        <input type="range" id="ob-input-km" class="custom-slider" min="0" max="400" value="50" step="10">
+      </div>
+    `,
+    init: () => {
+      let selectedVal = 'gas_medium';
+      const cards = document.querySelectorAll('#ob-transport-selector .selection-card');
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          cards.forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedVal = card.dataset.val;
+        });
+      });
+      
+      const slider = document.getElementById('ob-input-km');
+      const display = document.getElementById('ob-val-km');
+      slider.addEventListener('input', (e) => {
+        display.textContent = `${e.target.value} km`;
+      });
+      
+      // Store reference to read selectedVal in save()
+      document.getElementById('ob-transport-selector').dataset.current = selectedVal;
+    },
+    save: () => {
+      const selected = document.querySelector('#ob-transport-selector .selection-card.selected');
+      state.profile.transportMode = selected ? selected.dataset.val : 'gas_medium';
+      state.profile.weeklyKm = parseInt(document.getElementById('ob-input-km').value);
+    }
+  },
+  {
+    title: "What is your diet style?",
+    desc: "Food emissions depend heavily on meat consumption. Select the description that fits you best.",
+    html: `
+      <div class="card-selector" id="ob-diet-selector" style="grid-template-columns: 1fr;">
+        <div class="selection-card" data-val="meat_heavy" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
+          <span class="card-icon">🥩</span>
+          <div>
+            <div class="card-label">Frequent Meat Eater</div>
+            <div class="card-subtext">Include beef, pork, or lamb in most daily meals</div>
+          </div>
+        </div>
+        <div class="selection-card selected" data-val="meat_average" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
+          <span class="card-icon">🍗</span>
+          <div>
+            <div class="card-label">Average Omnivore</div>
+            <div class="card-subtext">Eat meat regularly, but mix with poultry/fish</div>
+          </div>
+        </div>
+        <div class="selection-card" data-val="flexitarian" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
+          <span class="card-icon">🥗</span>
+          <div>
+            <div class="card-label">Flexitarian</div>
+            <div class="card-subtext">Primarily vegetarian, eat meat occasionally</div>
+          </div>
+        </div>
+        <div class="selection-card" data-val="vegetarian" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
+          <span class="card-icon">🧀</span>
+          <div>
+            <div class="card-label">Vegetarian</div>
+            <div class="card-subtext">No meat or fish, eat dairy products & eggs</div>
+          </div>
+        </div>
+        <div class="selection-card" data-val="vegan" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
+          <span class="card-icon">🌱</span>
+          <div>
+            <div class="card-label">Vegan</div>
+            <div class="card-subtext">Exclusively plant-based diet</div>
+          </div>
+        </div>
+      </div>
+    `,
+    init: () => {
+      const cards = document.querySelectorAll('#ob-diet-selector .selection-card');
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          cards.forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+        });
+      });
+    },
+    save: () => {
+      const selected = document.querySelector('#ob-diet-selector .selection-card.selected');
+      state.profile.dietType = selected ? selected.dataset.val : 'meat_average';
+    }
+  },
+  {
+    title: "How is your home powered?",
+    desc: "Electricity and heating are primary energy drivers. Select your primary power source.",
+    html: `
+      <div class="card-selector" id="ob-energy-selector">
+        <div class="selection-card selected" data-val="grid">
+          <span class="card-icon">🔌</span>
+          <span class="card-label">Standard Grid</span>
+          <span class="card-subtext">Fossil-fuel heavy mix</span>
+        </div>
+        <div class="selection-card" data-val="mixed">
+          <span class="card-icon">☀️</span>
+          <span class="card-label">Mixed Source</span>
+          <span class="card-subtext">Partial solar, wind, or carbon offsets</span>
+        </div>
+        <div class="selection-card" data-val="green">
+          <span class="card-icon">🌿</span>
+          <span class="card-label">100% Green / Solar</span>
+          <span class="card-subtext">Clean, renewable tariff or home solar</span>
+        </div>
+      </div>
+    `,
+    init: () => {
+      const cards = document.querySelectorAll('#ob-energy-selector .selection-card');
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          cards.forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+        });
+      });
+    },
+    save: () => {
+      const selected = document.querySelector('#ob-energy-selector .selection-card.selected');
+      state.profile.energySource = selected ? selected.dataset.val : 'grid';
+    }
+  },
+  {
+    title: "How often do you fly?",
+    desc: "Air travel releases high emissions in single bursts. Estimate your monthly flight frequency.",
+    html: `
+      <div class="slider-container">
+        <label class="stat-label">Average Flights per Month</label>
+        <div class="slider-val-bubble" id="ob-val-flights">0</div>
+        <input type="range" id="ob-input-flights" class="custom-slider" min="0" max="6" value="0" step="0.5">
+        <span style="font-size:0.75rem; color:var(--text-muted); text-align:center;">
+          Note: Short-haul fits as ~0.5 flight, long-haul as 1-2 flights.
+        </span>
+      </div>
+    `,
+    init: () => {
+      const slider = document.getElementById('ob-input-flights');
+      const display = document.getElementById('ob-val-flights');
+      slider.addEventListener('input', (e) => {
+        display.textContent = e.target.value;
+      });
+    },
+    save: () => {
+      state.profile.monthlyFlights = parseFloat(document.getElementById('ob-input-flights').value);
+    }
+  },
+  {
+    title: "What are your shopping habits?",
+    desc: "Purchasing goods, fast fashion, and appliances has hidden carbon costs from manufacturing and transport.",
+    html: `
+      <div class="card-selector" id="ob-shopping-selector">
+        <div class="selection-card" data-val="heavy">
+          <span class="card-icon">🛍️</span>
+          <span class="card-label">Frequent Buyer</span>
+          <span class="card-subtext">Often buy new fashion, tech, items</span>
+        </div>
+        <div class="selection-card selected" data-val="average">
+          <span class="card-icon">🛒</span>
+          <span class="card-label">Average Consumer</span>
+          <span class="card-subtext">Buy new only when needed</span>
+        </div>
+        <div class="selection-card" data-val="minimalist">
+          <span class="card-icon">♻️</span>
+          <span class="card-label">Thrifter / Minimalist</span>
+          <span class="card-subtext">Secondhand clothing, minimal purchases</span>
+        </div>
+      </div>
+    `,
+    init: () => {
+      const cards = document.querySelectorAll('#ob-shopping-selector .selection-card');
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          cards.forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+        });
+      });
+    },
+    save: () => {
+      const selected = document.querySelector('#ob-shopping-selector .selection-card.selected');
+      state.profile.shoppingHabit = selected ? selected.dataset.val : 'average';
+    }
+  },
+  {
+    title: "Your Baseline Carbon Profile",
+    desc: "Here is your baseline carbon footprint. Adjust your goal to see your potential impact.",
+    html: `
+      <div class="stats-grid" style="margin-bottom: 15px;">
+        <div class="stat-card glass-panel" style="padding: 12px;">
+          <span class="stat-label">Annual Baseline</span>
+          <span class="stat-value" id="ob-val-baseline" style="font-size: 1.4rem;">0 kg</span>
+        </div>
+        <div class="stat-card glass-panel" style="padding: 12px;">
+          <span class="stat-label" id="ob-lbl-country">vs Country Avg</span>
+          <span class="stat-value" id="ob-val-country-pct" style="font-size: 1.4rem; color: var(--color-travel);">0%</span>
+        </div>
+        <div class="stat-card glass-panel" style="padding: 12px;">
+          <span class="stat-label">Sustainable Target</span>
+          <span class="stat-value" style="font-size: 1.4rem; color: var(--primary);">2,000 kg</span>
+        </div>
+      </div>
+      <div class="slider-container">
+        <label class="stat-label">Set Reduction Goal: <span id="ob-val-goal" style="color:var(--primary); font-weight:700;">15%</span></label>
+        <input type="range" id="ob-input-goal" class="custom-slider" min="10" max="30" value="15" step="1">
+        <div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-top: 8px;" id="ob-goal-impact-lbl">
+          Saving ~600 kg CO2e / year. Equivalent to taking 1.5 cars off the road!
+        </div>
+      </div>
+    `,
+    init: () => {
+      // Calculate baseline first
+      const baseline = calculateBaseline();
+      state.profile.baselineAnnual = baseline;
+      
+      const baselineDisp = document.getElementById('ob-val-baseline');
+      const countryLbl = document.getElementById('ob-lbl-country');
+      const countryPctDisp = document.getElementById('ob-val-country-pct');
+      
+      baselineDisp.textContent = `${Math.round(baseline).toLocaleString()} kg`;
+      
+      const regionalAvg = COUNTRY_AVERAGES[state.profile.location] || COUNTRY_AVERAGES.GL;
+      const pct = Math.round((baseline / regionalAvg) * 100);
+      countryLbl.textContent = `vs ${state.profile.location} Average`;
+      countryPctDisp.textContent = `${pct}%`;
+      if (pct <= 100) {
+        countryPctDisp.style.color = 'var(--primary)';
+      } else {
+        countryPctDisp.style.color = 'var(--color-travel)';
+      }
+
+      const slider = document.getElementById('ob-input-goal');
+      const display = document.getElementById('ob-val-goal');
+      const impactLbl = document.getElementById('ob-goal-impact-lbl');
+      
+      const updateGoalText = (val) => {
+        display.textContent = `${val}%`;
+        const saved = Math.round(baseline * (val / 100));
+        const equivalentGasKm = Math.round(saved / EMISSION_FACTORS.transport.gas_medium);
+        impactLbl.innerHTML = `Saving <strong>${saved.toLocaleString()} kg CO₂e</strong> / year.<br>Equivalent to avoiding <strong>${equivalentGasKm.toLocaleString()} km</strong> of driving!`;
+      };
+      
+      slider.addEventListener('input', (e) => {
+        updateGoalText(e.target.value);
+      });
+      
+      updateGoalText(slider.value);
+    },
+    save: () => {
+      state.profile.reductionGoal = parseInt(document.getElementById('ob-input-goal').value);
+    }
+  }
+];
+
+let currentStep = 0;
+
+// Calculation Helper
+function calculateBaseline() {
+  const p = state.profile;
+  
+  // Transport annual
+  const transFactor = EMISSION_FACTORS.transport[p.transportMode] || EMISSION_FACTORS.transport.gas_medium;
+  const transportAnnual = p.weeklyKm * 52 * transFactor;
+  
+  // Diet annual
+  const dietFactor = EMISSION_FACTORS.diet[p.dietType] || EMISSION_FACTORS.diet.meat_average;
+  const dietAnnual = dietFactor * 365;
+  
+  // Energy annual (divided by household size)
+  const energyFactor = EMISSION_FACTORS.energy[p.energySource] || EMISSION_FACTORS.energy.grid;
+  const energyAnnual = (energyFactor * 12);
+  
+  // Flights annual
+  const flightsAnnual = p.monthlyFlights * 12 * EMISSION_FACTORS.flights.average;
+  
+  // Consumption annual
+  const shopFactor = EMISSION_FACTORS.shopping[p.shoppingHabit] || EMISSION_FACTORS.shopping.average;
+  const consumptionAnnual = shopFactor * 12;
+  
+  // Waste annual (per person)
+  const wasteAnnual = EMISSION_FACTORS.waste.standard * 12; // Base per person
+  
+  return transportAnnual + dietAnnual + energyAnnual + flightsAnnual + consumptionAnnual + wasteAnnual;
+}
+
+// Initialize Application
+document.addEventListener('DOMContentLoaded', () => {
+  loadState();
+  initOnboarding();
+  initMainApp();
+  
+  // Render App based on onboarding state
+  if (state.onboarded) {
+    document.getElementById('onboarding-overlay').classList.add('hidden');
+    refreshDashboard();
+  } else {
+    document.getElementById('onboarding-overlay').classList.remove('hidden');
+    renderStep(0);
+  }
+});
+
+// Load & Save State in LocalStorage
+function loadState() {
+  const saved = localStorage.getItem('decarbonizer_state');
+  if (saved) {
+    try {
+      state = JSON.parse(saved);
+    } catch (e) {
+      console.error("Error loading localStorage state:", e);
+    }
+  }
+}
+
+function saveState() {
+  localStorage.setItem('decarbonizer_state', JSON.stringify(state));
+}
+
+// Onboarding logic
+function initOnboarding() {
+  const nextBtn = document.getElementById('ob-next-btn');
+  const prevBtn = document.getElementById('ob-prev-btn');
+  
+  nextBtn.addEventListener('click', () => {
+    // Save current step data
+    onboardingSteps[currentStep].save();
+    
+    if (currentStep < onboardingSteps.length - 1) {
+      currentStep++;
+      renderStep(currentStep);
+    } else {
+      // Complete Onboarding
+      state.onboarded = true;
+      setupDefaultHabits();
+      saveState();
+      
+      document.getElementById('onboarding-overlay').classList.add('hidden');
+      refreshDashboard();
+      
+      // Send onboarding completion message in chat
+      sendSystemGreeting();
+    }
+  });
+  
+  prevBtn.addEventListener('click', () => {
+    if (currentStep > 0) {
+      currentStep--;
+      renderStep(currentStep);
+    }
+  });
+}
+
+function renderStep(stepIndex) {
+  currentStep = stepIndex;
+  const step = onboardingSteps[stepIndex];
+  
+  const progressText = document.getElementById('ob-progress');
+  const container = document.getElementById('ob-question-container');
+  const prevBtn = document.getElementById('ob-prev-btn');
+  const nextBtn = document.getElementById('ob-next-btn');
+  
+  progressText.textContent = `Step ${stepIndex + 1} of ${onboardingSteps.length}`;
+  
+  container.innerHTML = `
+    <h2 class="ob-step-title">${step.title}</h2>
+    <p class="ob-step-desc">${step.desc}</p>
+    <div class="ob-question-content">${step.html}</div>
+  `;
+  
+  // Initialize step-specific event listeners
+  step.init();
+  
+  // Navigation states
+  prevBtn.disabled = stepIndex === 0;
+  nextBtn.textContent = stepIndex === onboardingSteps.length - 1 ? "Get Started" : "Next";
+}
+
+function setupDefaultHabits() {
+  const p = state.profile;
+  // Filter templates that are applicable based on user selections
+  const habits = HABITS_TEMPLATE.filter(habit => {
+    if (habit.category === 'transport') {
+      return habit.applicable.includes(p.transportMode);
+    }
+    if (habit.category === 'food') {
+      return habit.applicable.includes(p.dietType);
+    }
+    if (habit.category === 'energy') {
+      return habit.applicable.includes(p.energySource);
+    }
+    if (habit.category === 'consumption') {
+      return habit.applicable.includes(p.shoppingHabit);
+    }
+    return true; // waste is standard
+  }).map(h => ({
+    id: h.id,
+    text: h.text,
+    impact: h.impact,
+    category: h.category,
+    checked: false
+  }));
+  
+  state.habits = habits;
+}
+
+// Main Dashboard rendering
+function refreshDashboard() {
+  const p = state.profile;
+  const weeklyBaseline = p.baselineAnnual / 52;
+  const goalFraction = 1 - (p.reductionGoal / 100);
+  const weeklyTarget = weeklyBaseline * goalFraction;
+  const weeklySustainable = 2000 / 52; // ~38.46 kg per week
+  
+  // Update stats
+  document.getElementById('stat-baseline').textContent = `${Math.round(p.baselineAnnual).toLocaleString()} kg`;
+  
+  const regionalAvg = COUNTRY_AVERAGES[p.location] || COUNTRY_AVERAGES.GL;
+  const compareAvg = Math.round((p.baselineAnnual / regionalAvg) * 100);
+  document.getElementById('stat-country-compare').innerHTML = `<strong>${compareAvg}%</strong> of ${COUNTRY_NAMES[p.location] || "Global"} Avg`;
+  
+  // Calculate logged totals (this week - simulate logs in past 7 days)
+  let transportTotal = 0;
+  let energyTotal = 0;
+  let foodTotal = 0;
+  let consumptionTotal = 0;
+  let travelTotal = 0;
+  let wasteTotal = 0;
+  
+  // Add daily baselines from onboarding profile as fallback for non-logged categories
+  // to give a realistic running baseline + daily updates
+  const daysInWeek = 7;
+  const transDay = (weeklyBaseline - (p.monthlyFlights * 12 * EMISSION_FACTORS.flights.average / 52)) / 7;
+  
+  state.logs.forEach(log => {
+    // Only count logs in current weekly window
+    const val = parseFloat(log.co2);
+    if (log.category === 'Transport') transportTotal += val;
+    else if (log.category === 'Energy') energyTotal += val;
+    else if (log.category === 'Food') foodTotal += val;
+    else if (log.category === 'Consumption') consumptionTotal += val;
+    else if (log.category === 'Travel') travelTotal += val;
+    else if (log.category === 'Waste') wasteTotal += val;
+  });
+  
+  // Running weekly logged total
+  const loggedTotal = transportTotal + energyTotal + foodTotal + consumptionTotal + travelTotal + wasteTotal;
+  document.getElementById('stat-weekly-total').textContent = `${loggedTotal.toFixed(1)} kg`;
+  
+  // Budget progress bar calculations
+  // Max progress bar domain (sustainable target vs actual baseline)
+  const maxWeeklyBudgetDomain = Math.max(weeklyBaseline, 60);
+  document.getElementById('weekly-max-lbl').textContent = `${Math.round(maxWeeklyBudgetDomain)} kg`;
+  
+  const loggedPercentage = Math.min((loggedTotal / maxWeeklyBudgetDomain) * 100, 100);
+  const progressFill = document.getElementById('weekly-budget-progress');
+  progressFill.style.width = `${loggedPercentage}%`;
+  
+  // Position the sustainable marker
+  const markerPos = (weeklySustainable / maxWeeklyBudgetDomain) * 100;
+  const sustainableMarker = document.getElementById('sustainable-marker');
+  sustainableMarker.style.left = `${markerPos}%`;
+  
+  const percentOfSustainable = Math.round((loggedTotal / weeklySustainable) * 100);
+  document.getElementById('progress-percentage-text').textContent = `${percentOfSustainable}% of Sustainable Target`;
+  
+  if (loggedTotal > weeklySustainable) {
+    progressFill.style.background = 'linear-gradient(90deg, #34d399, var(--color-travel))';
+  } else {
+    progressFill.style.background = 'linear-gradient(90deg, #34d399, var(--primary))';
+  }
+  
+  // Calculate habits saving
+  let habitsSavings = 0;
+  state.habits.forEach(h => {
+    if (h.checked) habitsSavings += h.impact;
+  });
+  
+  document.getElementById('stat-savings').textContent = `${habitsSavings.toFixed(1)} kg`;
+  
+  const weeklyGoalSavingsTarget = weeklyBaseline * (p.reductionGoal / 100);
+  const goalPercentage = Math.round((habitsSavings / weeklyGoalSavingsTarget) * 100);
+  document.getElementById('stat-savings-percentage').textContent = `${goalPercentage}% of weekly goal (${weeklyGoalSavingsTarget.toFixed(1)} kg)`;
+  
+  // Update donut chart
+  document.getElementById('donut-total').textContent = loggedTotal.toFixed(1);
+  
+  const breakdownVals = {
+    transport: transportTotal,
+    energy: energyTotal,
+    food: foodTotal,
+    consumption: consumptionTotal,
+    travel: travelTotal,
+    waste: wasteTotal
+  };
+  
+  // Set label values
+  document.getElementById('lbl-val-transport').textContent = `${transportTotal.toFixed(1)} kg`;
+  document.getElementById('lbl-val-energy').textContent = `${energyTotal.toFixed(1)} kg`;
+  document.getElementById('lbl-val-food').textContent = `${foodTotal.toFixed(1)} kg`;
+  document.getElementById('lbl-val-consumption').textContent = `${consumptionTotal.toFixed(1)} kg`;
+  document.getElementById('lbl-val-travel').textContent = `${travelTotal.toFixed(1)} kg`;
+  document.getElementById('lbl-val-waste').textContent = `${wasteTotal.toFixed(1)} kg`;
+  
+  // Render segments
+  let cumulativePercent = 0;
+  const segments = [
+    { id: 'seg-transport', val: transportTotal },
+    { id: 'seg-energy', val: energyTotal },
+    { id: 'seg-food', val: foodTotal },
+    { id: 'seg-consumption', val: consumptionTotal },
+    { id: 'seg-travel', val: travelTotal },
+    { id: 'seg-waste', val: wasteTotal }
+  ];
+  
+  segments.forEach(seg => {
+    const el = document.getElementById(seg.id);
+    if (loggedTotal === 0) {
+      el.setAttribute('stroke-dasharray', `0 100`);
+      el.setAttribute('stroke-dashoffset', '0');
+    } else {
+      const share = (seg.val / loggedTotal) * 100;
+      el.setAttribute('stroke-dasharray', `${share} 100`);
+      el.setAttribute('stroke-dashoffset', `${-cumulativePercent}`);
+      cumulativePercent += share;
+    }
+  });
+  
+  // Render Habits checklist
+  renderHabitsList();
+  
+  // Render History lists
+  renderHistoryList();
+}
+
+function renderHabitsList() {
+  const container = document.getElementById('habits-list-container');
+  container.innerHTML = '';
+  
+  let checkedCount = 0;
+  
+  state.habits.forEach(h => {
+    if (h.checked) checkedCount++;
+    
+    const card = document.createElement('div');
+    card.className = `habit-card ${h.checked ? 'checked' : ''}`;
+    card.innerHTML = `
+      <div class="habit-checkbox"></div>
+      <span class="habit-text">${h.text}</span>
+      <span class="habit-impact">-${h.impact} kg</span>
+    `;
+    
+    card.addEventListener('click', () => {
+      h.checked = !h.checked;
+      saveState();
+      refreshDashboard();
+      
+      if (h.checked) {
+        appendAssistantMessage(`🌱 Awesome choice! By completing: <em>"${h.text}"</em>, you've saved **${h.impact} kg CO₂e** this week!`);
+      }
+    });
+    
+    container.appendChild(card);
+  });
+  
+  document.getElementById('habits-completed-summary').textContent = `${checkedCount} of ${state.habits.length} active`;
+}
+
+function renderHistoryList() {
+  const container = document.getElementById('history-list-container');
+  const emptyText = document.getElementById('empty-history-text');
+  
+  // Remove existing items (except empty text)
+  const items = container.querySelectorAll('.history-item');
+  items.forEach(i => i.remove());
+  
+  document.getElementById('logs-count').textContent = `${state.logs.length} items logged`;
+  
+  if (state.logs.length === 0) {
+    emptyText.style.display = 'block';
+  } else {
+    emptyText.style.display = 'none';
+    
+    // Render starting with newest
+    state.logs.slice().reverse().forEach(log => {
+      const date = new Date(log.timestamp);
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      
+      let catColor = 'var(--text-muted)';
+      if (log.category === 'Transport') catColor = 'var(--color-transport)';
+      else if (log.category === 'Energy') catColor = 'var(--color-energy)';
+      else if (log.category === 'Food') catColor = 'var(--color-food)';
+      else if (log.category === 'Consumption') catColor = 'var(--color-consumption)';
+      else if (log.category === 'Travel') catColor = 'var(--color-travel)';
+      else if (log.category === 'Waste') catColor = 'var(--color-waste)';
+      
+      item.innerHTML = `
+        <div class="history-meta">
+          <span class="history-name">${log.description}</span>
+          <span class="history-date">${timeStr} • ${log.category}</span>
+        </div>
+        <span class="history-value-badge" style="background: rgba(255,255,255,0.03); color: ${catColor}; border: 1px solid ${catColor}40;">
+          +${log.co2.toFixed(1)} kg
+        </span>
+      `;
+      
+      container.appendChild(item);
+    });
+  }
+}
+
+// Initial Greeting Message from Chatbot
+function sendSystemGreeting() {
+  const p = state.profile;
+  const weeklyTarget = (p.baselineAnnual / 52) * (1 - p.reductionGoal / 100);
+  
+  const greetMsg = `
+    🎉 <strong>Welcome to DeCarbonizer!</strong><br><br>
+    I have calculated your annual baseline carbon footprint at <strong>${Math.round(p.baselineAnnual).toLocaleString()} kg CO₂e</strong>.<br>
+    • Your country's average is ~${Math.round(COUNTRY_AVERAGES[p.location]).toLocaleString()} kg.<br>
+    • The global sustainable target is <strong>2,000 kg</strong> per year.<br><br>
+    With your <strong>${p.reductionGoal}%</strong> reduction goal, your target weekly budget is <strong>${weeklyTarget.toFixed(1)} kg CO₂e</strong>.<br><br>
+    🌱 <em>Let's work together to reach it! Check out your custom habits list on the dashboard, or type what you did today (e.g., "I drove 25 km") to start tracking.</em>
+  `;
+  appendAssistantMessage(greetMsg);
+}
+
+// Main Chat Console Engine
+function initMainApp() {
+  const sendBtn = document.getElementById('chat-send-btn');
+  const inputField = document.getElementById('chat-input-field');
+  const resetBtn = document.getElementById('reset-profile-btn');
+  
+  // Reset onboarding
+  resetBtn.addEventListener('click', () => {
+    if (confirm("Reset profile and re-run onboarding? This clears your logs and history.")) {
+      localStorage.removeItem('decarbonizer_state');
+      state = {
+        onboarded: false,
+        profile: { location: 'GL', householdSize: 1, transportMode: 'gas_medium', weeklyKm: 50, dietType: 'meat_average', energySource: 'grid', monthlyFlights: 0, shoppingHabit: 'average', baselineAnnual: 4700, reductionGoal: 15 },
+        logs: [],
+        habits: []
+      };
+      saveState();
+      
+      // Clear chat
+      document.getElementById('chat-messages-container').innerHTML = '';
+      currentStep = 0;
+      document.getElementById('onboarding-overlay').classList.remove('hidden');
+      renderStep(0);
+    }
+  });
+
+  // Send message events
+  sendBtn.addEventListener('click', handleUserSendMessage);
+  inputField.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleUserSendMessage();
+  });
+  
+  // Quick log badge clicks
+  const badges = document.querySelectorAll('.quick-log-badge');
+  badges.forEach(badge => {
+    badge.addEventListener('click', () => {
+      inputField.value = badge.dataset.log;
+      handleUserSendMessage();
+    });
+  });
+
+  // If already onboarded, send welcome back or initial messages
+  if (state.onboarded && state.logs.length === 0) {
+    sendSystemGreeting();
+  } else if (state.onboarded) {
+    appendAssistantMessage(`👋 Welcome back to DeCarbonizer! You have logged <strong>${state.logs.length}</strong> activities this week. What green choice did you make today?`);
+  }
+}
+
+function handleUserSendMessage() {
+  const inputField = document.getElementById('chat-input-field');
+  const query = inputField.value.trim();
+  if (!query) return;
+  
+  // Append user message
+  appendUserMessage(query);
+  inputField.value = '';
+  
+  // Show parsing / processing state briefly
+  setTimeout(() => {
+    processActivityLog(query);
+  }, 400);
+}
+
+function appendUserMessage(text) {
+  const container = document.getElementById('chat-messages-container');
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'message user';
+  
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  msgDiv.innerHTML = `
+    <div class="bubble">${escapeHtml(text)}</div>
+    <span class="msg-time">${time}</span>
+  `;
+  
+  container.appendChild(msgDiv);
+  scrollToBottom();
+}
+
+function appendAssistantMessage(html) {
+  const container = document.getElementById('chat-messages-container');
+  const msgDiv = document.createElement('div');
+  msgDiv.className = 'message assistant';
+  
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  // Standard format formatting markdown-like elements
+  let formattedHtml = html
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+  msgDiv.innerHTML = `
+    <div class="bubble">${formattedHtml}</div>
+    <span class="msg-time">${time}</span>
+  `;
+  
+  container.appendChild(msgDiv);
+  scrollToBottom();
+}
+
+function scrollToBottom() {
+  const container = document.getElementById('chat-messages-container');
+  container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// NLP Action Log Parser
+function processActivityLog(text) {
+  const query = text.toLowerCase();
+  
+  // Log metadata variables
+  let category = '';
+  let description = '';
+  let co2 = 0;
+  let tip = '';
+  
+  // Helper to extract first number
+  const numMatch = query.match(/(\d+(?:\.\d+)?)/);
+  const numberVal = numMatch ? parseFloat(numMatch[1]) : null;
+
+  // 1. TRANSPORT PARSE
+  if (query.includes('drive') || query.includes('drove') || query.includes('car') || query.includes('km') || query.includes('miles') || query.includes('travelled') || query.includes('transit') || query.includes('bus') || query.includes('train')) {
+    category = 'Transport';
+    let distance = numberVal || 15; // default 15km if no distance provided
+    let factorName = state.profile.transportMode;
+    let descMode = 'gas car';
+
+    if (query.includes('electric') || query.includes('ev')) {
+      factorName = 'electric';
+      descMode = 'Electric vehicle';
+    } else if (query.includes('hybrid')) {
+      factorName = 'hybrid';
+      descMode = 'Hybrid vehicle';
+    } else if (query.includes('bus') || query.includes('train') || query.includes('transit')) {
+      factorName = 'transit';
+      descMode = 'Public Transit';
+    } else if (query.includes('walk') || query.includes('bike') || query.includes('cycle') || query.includes('walked') || query.includes('biked') || query.includes('cycling')) {
+      factorName = 'walking_cycling';
+      descMode = 'Biking/Walking';
+    } else {
+      // Look up profile mode
+      if (factorName.includes('suv')) descMode = 'SUV gas car';
+      else if (factorName.includes('medium')) descMode = 'gasoline car';
+      else if (factorName.includes('hybrid')) descMode = 'Hybrid vehicle';
+      else if (factorName.includes('electric')) descMode = 'Electric vehicle';
+    }
+
+    const factor = EMISSION_FACTORS.transport[factorName] || 0.18;
+    co2 = distance * factor;
+    description = `Drove ${distance} km in ${descMode}`;
+
+    if (factorName === 'walking_cycling') {
+      tip = "Beautiful choice! Biking or walking has a zero-carbon impact. You saved about **3.3 kg CO₂e** compared to driving this distance in a medium gas car.";
+    } else if (factorName === 'transit') {
+      tip = "Great decision! Taking public transit emits up to 80% less carbon than driving alone. Keep it up!";
+    } else {
+      const savings = distance * (EMISSION_FACTORS.transport.gas_medium - EMISSION_FACTORS.transport.transit);
+      tip = `Driving is carbon-intensive. Next time, could you take transit? Swap this trip to public transit to save **${savings.toFixed(1)} kg CO₂e**!`;
+    }
+  }
+  
+  // 2. DIET / FOOD PARSE
+  else if (query.includes('burger') || query.includes('beef') || query.includes('steak') || query.includes('meat') || query.includes('chicken') || query.includes('pork') || query.includes('salad') || query.includes('vegan') || query.includes('vegetarian') || query.includes('ate') || query.includes('had') || query.includes('lunch') || query.includes('dinner') || query.includes('meal')) {
+    category = 'Food';
+    
+    if (query.includes('beef') || query.includes('steak') || query.includes('hamburger') || query.includes('burger')) {
+      co2 = EMISSION_FACTORS.meals.beef;
+      description = "Beef burger meal";
+      tip = "Beef has the highest carbon footprint of any food (30x more than tofu). Swapping beef for chicken saves **2.3 kg CO₂e**—equal to driving 12 km!";
+    } else if (query.includes('chicken') || query.includes('pork') || query.includes('fish') || query.includes('meat') || query.includes('poultry')) {
+      co2 = EMISSION_FACTORS.meals.chicken;
+      description = "Meat/Chicken meal";
+      tip = "Poultry is much better than red meat. Consider a vegetarian alternative next time to save an extra **0.4 kg CO₂e**.";
+    } else if (query.includes('vegan') || query.includes('salad') || query.includes('plant-based') || query.includes('tofu')) {
+      co2 = EMISSION_FACTORS.meals.vegan;
+      description = "Vegan plant-based meal";
+      tip = "Wonderful green selection! Plant-based meals have the lowest impact. You saved approximately **2.9 kg CO₂e** compared to a beef meal!";
+    } else if (query.includes('vegetarian') || query.includes('veg') || query.includes('cheese') || query.includes('pizza') || query.includes('eggs')) {
+      co2 = EMISSION_FACTORS.meals.vegetarian;
+      description = "Vegetarian meal";
+      tip = "Great vegetarian choice! Reducing meat is one of the most effective personal actions you can take.";
+    } else {
+      co2 = EMISSION_FACTORS.meals.average;
+      description = "Standard dinner/meal";
+      tip = "Every meal choice counts. Emphasizing beans, grains, and greens keeps your footprint low!";
+    }
+  }
+
+  // 3. CONSUMPTION / SHOPPING PARSE
+  else if (query.includes('bought') || query.includes('purchase') || query.includes('jacket') || query.includes('shoes') || query.includes('shirt') || query.includes('clothes') || query.includes('shopping') || query.includes('jeans') || query.includes('furniture') || query.includes('phone') || query.includes('computer')) {
+    category = 'Consumption';
+    
+    if (query.includes('secondhand') || query.includes('thrifted') || query.includes('used') || query.includes('thrift')) {
+      co2 = EMISSION_FACTORS.purchases.secondhand_clothing;
+      description = "Secondhand clothing item";
+      tip = "Secondhand is spectacular! It prevents production and shipping emissions, saving over **10 kg CO₂e** compared to a new clothing item.";
+    } else if (query.includes('phone') || query.includes('computer') || query.includes('electronics') || query.includes('tv')) {
+      co2 = EMISSION_FACTORS.purchases.electronics;
+      description = "New electronics purchase";
+      tip = "Electronics require massive manufacturing footprints. Maximize the lifespan of your devices and recycle them responsibly when they break.";
+    } else if (query.includes('furniture') || query.includes('chair') || query.includes('table')) {
+      co2 = EMISSION_FACTORS.purchases.furniture;
+      description = "New furniture piece";
+      tip = "Thrifting vintage furniture is a stylish, sustainable alternative that saves carbon and wood resources.";
+    } else if (query.includes('jacket') || query.includes('shoes') || query.includes('shirt') || query.includes('clothes') || query.includes('jeans')) {
+      co2 = EMISSION_FACTORS.purchases.new_clothing;
+      description = "New clothing purchase";
+      tip = "Fast fashion has high water and carbon impacts. Try buying high-quality, durable garments or shopping secondhand.";
+    } else {
+      co2 = EMISSION_FACTORS.purchases.miscellaneous;
+      description = "New item purchase";
+      tip = "Before buying, ask yourself: do I really need this new item, or can I rent, repair, or buy it secondhand?";
+    }
+  }
+
+  // 4. TRAVEL / FLIGHT PARSE
+  else if (query.includes('flight') || query.includes('flew') || query.includes('plane') || query.includes('flying')) {
+    category = 'Travel';
+    
+    if (query.includes('long') || query.includes('long-haul') || query.includes('cross-country') || (numberVal && numberVal > 4)) {
+      co2 = EMISSION_FACTORS.flights.long_haul;
+      description = "Long-haul flight";
+      tip = "Long flights emit massive carbon volumes in a single block. Consider carbon offsets or choosing video calls for business meetings.";
+    } else if (query.includes('short') || query.includes('short-haul') || (numberVal && numberVal <= 4)) {
+      co2 = EMISSION_FACTORS.flights.short_haul;
+      description = "Short-haul flight";
+      tip = "For distances under 500 km, taking a high-speed train instead of a flight reduces emissions by **90%**!";
+    } else {
+      co2 = EMISSION_FACTORS.flights.average;
+      description = "Flight logged";
+      tip = "Reducing flight frequency is the single fastest way to shrink a large individual carbon footprint.";
+    }
+  }
+
+  // 5. WASTE / RECYCLING PARSE
+  else if (query.includes('recycle') || query.includes('recycled') || query.includes('compost') || query.includes('trash') || query.includes('waste')) {
+    category = 'Waste';
+    
+    if (query.includes('recycle') || query.includes('recycled') || query.includes('compost')) {
+      co2 = 0.5; // low processing cost
+      description = "Recycling and composting bin";
+      tip = "Awesome job sorting waste! Composting organic waste prevents methane emissions (a greenhouse gas 28x more potent than CO2) in landfills.";
+    } else {
+      co2 = 2.0;
+      description = "General trash bag";
+      tip = "Minimizing landfill waste is key. Try avoiding single-use plastics and packaging whenever possible.";
+    }
+  }
+  
+  // 6. ENERGY PARSE
+  else if (query.includes('electricity') || query.includes('heater') || query.includes('ac') || query.includes('air conditioning') || query.includes('power') || query.includes('energy') || query.includes('wash') || query.includes('dryer')) {
+    category = 'Energy';
+    co2 = numberVal ? numberVal * 0.4 : 3.0; // Estimate ~3kg per log
+    description = "Home energy usage log";
+    tip = "Setting thermostats just 1°C lower can reduce heating/cooling energy consumption by up to 10%!";
+  }
+
+  // 7. FALLBACK PARSING
+  else {
+    // We couldn't recognize it automatically
+    const fallbackMsgs = [
+      `🤔 I couldn't quite parse the carbon impact of that activity. Could you clarify it? For example:
+       • <em>"I drove 20 km"</em>
+       • <em>"had a beef burger"</em>
+       • <em>"bought a secondhand jacket"</em>
+       
+       Alternatively, click any of the **Quick Action Buttons** below the chat box to log standard activities directly!`,
+       `I want to make sure I log this accurately! Is this related to:
+       🚗 **Transport** (e.g. driving distance),
+       🍔 **Food** (e.g. meat vs vegetarian meal),
+       🛍️ **Shopping** (e.g. buying clothing/tech),
+       or ⚡ **Energy**? 
+       
+       Please specify so I can add it to your dashboard.`
+    ];
+    appendAssistantMessage(fallbackMsgs[Math.floor(Math.random() * fallbackMsgs.length)]);
+    return;
+  }
+  
+  // Add log to state
+  const newLog = {
+    id: 'log_' + Date.now(),
+    category: category,
+    description: description,
+    co2: co2,
+    timestamp: new Date().toISOString()
+  };
+  
+  state.logs.push(newLog);
+  saveState();
+  refreshDashboard();
+  
+  // Render Assistant validation response
+  const responses = [
+    `✔️ **Logged:** *${description}* (+**${co2.toFixed(1)} kg CO₂e**).<br><br>${tip}`,
+    `🌍 Saved to category **${category}**: *${description}* (+**${co2.toFixed(1)} kg CO₂e**).<br><br>${tip}`,
+    `👍 Got it! *${description}* (+**${co2.toFixed(1)} kg CO₂e**) has been tracked.<br><br>${tip}`
+  ];
+  
+  // Milestones celebration triggers
+  let milestoneMessage = '';
+  const loggedTotal = state.logs.reduce((acc, curr) => acc + curr.co2, 0);
+  
+  // Check if they hit first 10kg saved (if habits checked count is positive)
+  let habitsSavings = 0;
+  state.habits.forEach(h => { if (h.checked) habitsSavings += h.impact; });
+  
+  // Milestone flags trigger once
+  if (habitsSavings >= 10 && !state.milestone_10kg) {
+    state.milestone_10kg = true;
+    milestoneMessage = `<br><br>🏆 <strong>Milestone Unlocked!</strong> You have saved your first <strong>10 kg CO₂e</strong> through your habit changes! That's equivalent to planting a new tree seedling growing for 10 years! 🌳 Keep up the fantastic effort!`;
+    saveState();
+    triggerPulseMilestone();
+  }
+  
+  appendAssistantMessage(responses[Math.floor(Math.random() * responses.length)] + milestoneMessage);
+}
+
+function triggerPulseMilestone() {
+  const savingsCard = document.querySelector('.stats-grid .stat-card:nth-child(3)');
+  if (savingsCard) {
+    savingsCard.classList.add('pulse-milestone');
+    setTimeout(() => {
+      savingsCard.classList.remove('pulse-milestone');
+    }, 4500);
+  }
+}

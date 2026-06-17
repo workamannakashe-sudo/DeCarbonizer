@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeCarbonizer — Personal Carbon Footprint Tracker & Assistant</title>
+  <meta name="description" content="Track and reduce your environmental footprint with friendly, AI-driven carbon insights, daily habits, and easy conversational logging.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Onboarding Modal Overlay -->
+  <div id="onboarding-overlay">
+    <div class="onboarding-card glass-panel" id="onboarding-card">
+      <div class="ob-header">
+        <div class="brand-title">
+          <span class="brand-logo" style="display: inline-flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" style="width:100%; height:100%; fill:none; stroke:var(--text-inverse); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; padding:5px;">
+              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 3.2 1 9a7 7 0 0 1-9 9z"/>
+              <path d="M9 22v-6"/>
+            </svg>
+          </span>
+          DeCarbonizer
+        </div>
+        <div class="ob-progress-indicator" id="ob-progress">Step 1 of 6</div>
+      </div>
+      
+      <div id="ob-question-container">
+        <!-- Question content gets injected dynamically here -->
+      </div>
+      
+      <div class="ob-actions">
+        <button id="ob-prev-btn" class="btn-secondary" disabled>Back</button>
+        <button id="ob-next-btn" class="btn-primary">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Application Wrapper -->
+  <div id="app-container">
+    
+    <!-- Left Column: Dashboard Panel -->
+    <div id="dashboard-panel" class="glass-panel">
+      
+      <div class="header-bar">
+        <h1 class="brand-title" id="logo-header">
+          <span class="brand-logo" style="display: inline-flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" style="width:100%; height:100%; fill:none; stroke:var(--text-inverse); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; padding:5px;">
+              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 3.2 1 9a7 7 0 0 1-9 9z"/>
+              <path d="M9 22v-6"/>
+            </svg>
+          </span>
+          DeCarbonizer
+        </h1>
+        <button id="reset-profile-btn" class="btn-secondary" style="padding: 6px 12px; font-size: 0.75rem;" title="Reset profile and restart onboarding">
+          Reset Profile
+        </button>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="stats-grid">
+        <div class="stat-card glass-panel">
+          <span class="stat-label">Baseline Footprint</span>
+          <span class="stat-value" id="stat-baseline">0 kg</span>
+          <span class="stat-label" style="font-size:0.7rem; text-transform:none;" id="stat-country-compare">vs Country Avg</span>
+        </div>
+        <div class="stat-card glass-panel">
+          <span class="stat-label">Total Logged (wk)</span>
+          <span class="stat-value" id="stat-weekly-total">0.0 kg</span>
+          <span class="stat-label" style="font-size:0.7rem; text-transform:none;" id="stat-remaining-budget">CO₂e emissions</span>
+        </div>
+        <div class="stat-card glass-panel">
+          <span class="stat-label">Goal Saved (wk)</span>
+          <span class="stat-value savings" id="stat-savings">0.0 kg</span>
+          <span class="stat-label" style="font-size:0.7rem; text-transform:none;" id="stat-savings-percentage">0% of weekly goal</span>
+        </div>
+      </div>
+
+      <!-- Goal Progress Bar Section -->
+      <div class="progress-section glass-panel" style="padding: 18px;">
+        <div class="progress-header">
+          <span>Weekly Carbon Budget</span>
+          <span id="progress-percentage-text">0% of Sustainable Budget</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-fill" id="weekly-budget-progress"></div>
+          <!-- Marker at the 2-tonne sustainable weekly limit: 2000kg / 52 weeks = 38.46 kg per week -->
+          <div class="target-marker" id="sustainable-marker" style="left: 60%;" title="Sustainable Limit (38.5 kg/week)"></div>
+        </div>
+        <div class="progress-header" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+          <span>0 kg CO₂e</span>
+          <span style="color: var(--color-travel); font-weight:600;" id="sustainable-target-lbl">Sustainable Target: 38.5 kg/week</span>
+          <span id="weekly-max-lbl">60 kg</span>
+        </div>
+      </div>
+
+      <!-- Category Breakdown Chart Section -->
+      <div class="breakdown-section glass-panel" style="padding: 18px;">
+        
+        <div class="chart-container">
+          <svg class="donut-svg" width="160" height="160" viewBox="0 0 42 42">
+            <circle class="donut-ring" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="rgba(255,255,255,0.03)" stroke-width="4.5"></circle>
+            
+            <circle class="donut-segment" id="seg-transport" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--color-transport)" stroke-width="4.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+            <circle class="donut-segment" id="seg-energy" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--color-energy)" stroke-width="4.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+            <circle class="donut-segment" id="seg-food" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--color-food)" stroke-width="4.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+            <circle class="donut-segment" id="seg-consumption" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--color-consumption)" stroke-width="4.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+            <circle class="donut-segment" id="seg-travel" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--color-travel)" stroke-width="4.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+            <circle class="donut-segment" id="seg-waste" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--color-waste)" stroke-width="4.5" stroke-dasharray="0 100" stroke-dashoffset="0"></circle>
+          </svg>
+          <div class="donut-center-text">
+            <span class="donut-center-val" id="donut-total">0.0</span>
+            <span class="donut-center-lbl">kg CO₂e</span>
+          </div>
+        </div>
+
+        <div class="breakdown-legend">
+          <div class="legend-item">
+            <div class="legend-info">
+              <span class="legend-color" style="background-color: var(--color-transport);"></span>
+              <span>🚗 Transport</span>
+            </div>
+            <span class="legend-value" id="lbl-val-transport">0.0 kg</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-info">
+              <span class="legend-color" style="background-color: var(--color-energy);"></span>
+              <span>⚡ Energy</span>
+            </div>
+            <span class="legend-value" id="lbl-val-energy">0.0 kg</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-info">
+              <span class="legend-color" style="background-color: var(--color-food);"></span>
+              <span>🍔 Food</span>
+            </div>
+            <span class="legend-value" id="lbl-val-food">0.0 kg</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-info">
+              <span class="legend-color" style="background-color: var(--color-consumption);"></span>
+              <span>🛍️ Consumption</span>
+            </div>
+            <span class="legend-value" id="lbl-val-consumption">0.0 kg</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-info">
+              <span class="legend-color" style="background-color: var(--color-travel);"></span>
+              <span>✈️ Travel</span>
+            </div>
+            <span class="legend-value" id="lbl-val-travel">0.0 kg</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-info">
+              <span class="legend-color" style="background-color: var(--color-waste);"></span>
+              <span>🗑️ Waste</span>
+            </div>
+            <span class="legend-value" id="lbl-val-waste">0.0 kg</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Goal Micro Habits Checklist -->
+      <div class="habits-section glass-panel" style="padding: 18px;">
+        <div class="habits-title">
+          <span>Weekly Micro-Habits</span>
+          <span style="font-size:0.8rem; color:var(--primary);" id="habits-completed-summary">0 completed</span>
+        </div>
+        <div class="habits-list" id="habits-list-container">
+          <!-- Habits generated dynamically based on profile -->
+        </div>
+      </div>
+
+      <!-- History Log Feed -->
+      <div class="history-section glass-panel" style="padding: 18px;">
+        <div class="history-header">
+          <h3 style="font-family: var(--font-title); font-size:1rem; font-weight:600;">Daily Activity Logs</h3>
+          <span style="font-size:0.75rem; color:var(--text-muted);" id="logs-count">0 items logged</span>
+        </div>
+        <div class="history-list" id="history-list-container">
+          <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 20px 0;" id="empty-history-text">
+            No activities logged today. Say something like "I drove 20 km" to start tracking!
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right Column: Chat Console -->
+    <div id="chat-panel" class="glass-panel">
+      
+      <div class="chat-header">
+        <div class="assistant-avatar">🤖</div>
+        <div class="assistant-info">
+          <span class="assistant-name">EcoTrack AI</span>
+          <span class="assistant-status">Active Helper</span>
+        </div>
+      </div>
+
+      <div class="chat-messages" id="chat-messages-container">
+        <!-- Messages get injected dynamically here -->
+      </div>
+
+      <div class="chat-input-area">
+        
+        <!-- Quick logs row -->
+        <div class="quick-log-row">
+          <span class="quick-log-badge" data-log="drove 15 km in gasoline car">🚗 Drive 15km</span>
+          <span class="quick-log-badge" data-log="ate a beef burger meal">🍔 Beef Meal</span>
+          <span class="quick-log-badge" data-log="had a delicious vegan salad">🥗 Vegan Meal</span>
+          <span class="quick-log-badge" data-log="bought organic food and vegetables">🛍️ Organic Food</span>
+          <span class="quick-log-badge" data-log="recycled all our paper and plastic">🗑️ Recycle Trash</span>
+          <span class="quick-log-badge" data-log="took the bus for 8 km">🚌 Bus 8km</span>
+        </div>
+
+        <div class="input-container">
+          <input type="text" id="chat-input-field" class="chat-input" placeholder="Tell EcoTrack what you did today (e.g. 'I drove 30 km')..." autocomplete="off">
+          <button id="chat-send-btn" class="send-btn" title="Send message">
+            <svg viewBox="0 0 24 24">
+              <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+            </svg>
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
