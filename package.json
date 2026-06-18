@@ -1,0 +1,13 @@
+{
+  "name": "decarbonizer",
+  "version": "1.0.0",
+  "description": "Personal Carbon Footprint Tracker & Assistant",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}

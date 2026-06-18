@@ -1326,19 +1326,22 @@ function showGoogleUser(name, picture) {
 }
 
 function initGoogleServices() {
-  if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-    google.accounts.id.initialize({
-      client_id: "87654321-mockclientid.apps.googleusercontent.com",
-      callback: window.handleCredentialResponse
-    });
-    
-    const signInBtnContainer = document.getElementById("google-signin-btn-container");
-    if (signInBtnContainer) {
-      google.accounts.id.renderButton(
-        signInBtnContainer,
-        { theme: "dark", size: "medium", shape: "rectangular" }
-      );
-    }
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
+    setTimeout(initGoogleServices, 300);
+    return;
+  }
+  
+  google.accounts.id.initialize({
+    client_id: "87654321-mockclientid.apps.googleusercontent.com",
+    callback: window.handleCredentialResponse
+  });
+  
+  const signInBtnContainer = document.getElementById("google-signin-btn-container");
+  if (signInBtnContainer) {
+    google.accounts.id.renderButton(
+      signInBtnContainer,
+      { theme: "dark", size: "medium", shape: "rectangular" }
+    );
   }
 
   if (state.google_user) {
