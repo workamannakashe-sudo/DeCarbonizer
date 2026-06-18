@@ -468,6 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadState();
   initOnboarding();
   initMainApp();
+  initGoogleServices();
   
   // Render App based on onboarding state
   if (state.onboarded) {
@@ -680,29 +681,10 @@ function refreshDashboard() {
   document.getElementById('lbl-val-travel').textContent = `${travelTotal.toFixed(1)} kg`;
   document.getElementById('lbl-val-waste').textContent = `${wasteTotal.toFixed(1)} kg`;
   
-  // Render segments
-  let cumulativePercent = 0;
-  const segments = [
-    { id: 'seg-transport', val: transportTotal },
-    { id: 'seg-energy', val: energyTotal },
-    { id: 'seg-food', val: foodTotal },
-    { id: 'seg-consumption', val: consumptionTotal },
-    { id: 'seg-travel', val: travelTotal },
-    { id: 'seg-waste', val: wasteTotal }
-  ];
-  
-  segments.forEach(seg => {
-    const el = document.getElementById(seg.id);
-    if (loggedTotal === 0) {
-      el.setAttribute('stroke-dasharray', `0 100`);
-      el.setAttribute('stroke-dashoffset', '0');
-    } else {
-      const share = (seg.val / loggedTotal) * 100;
-      el.setAttribute('stroke-dasharray', `${share} 100`);
-      el.setAttribute('stroke-dashoffset', `${-cumulativePercent}`);
-      cumulativePercent += share;
-    }
-  });
+  // Render Google Chart
+  if (window.googleChartsLoaded) {
+    drawGoogleChart(transportTotal, energyTotal, foodTotal, consumptionTotal, travelTotal, wasteTotal);
+  }
   
   // Render Habits checklist
   renderHabitsList();
@@ -823,6 +805,12 @@ function initMainApp() {
         habits: []
       };
       saveState();
+      
+      // Reset Google Profile UI
+      const profileContainer = document.getElementById('google-user-profile');
+      const signInBtn = document.getElementById('google-signin-btn-container');
+      if (profileContainer) profileContainer.style.display = 'none';
+      if (signInBtn) signInBtn.style.display = 'block';
       
       // Clear chat
       document.getElementById('chat-messages-container').innerHTML = '';
@@ -1236,3 +1224,125 @@ function triggerPulseMilestone() {
     }, 4500);
   }
 }
+
+// --- Google Services Integration ---
+
+// Google Charts Loader Setup
+window.googleChartsLoaded = false;
+if (typeof google !== 'undefined') {
+  google.charts.load('current', {'packages':['corechart']});
+  google.charts.setOnLoadCallback(() => {
+    window.googleChartsLoaded = true;
+    if (state.onboarded) {
+      refreshDashboard();
+    }
+  });
+}
+
+function drawGoogleChart(trans, energy, food, cons, travel, waste) {
+  if (typeof google === 'undefined' || !google.visualization) return;
+  
+  const hasData = (trans + energy + food + cons + travel + waste) > 0;
+  
+  let dataTable;
+  if (!hasData) {
+    dataTable = google.visualization.arrayToDataTable([
+      ['Category', 'CO2e (kg)'],
+      ['No Logs Yet', 1]
+    ]);
+  } else {
+    dataTable = google.visualization.arrayToDataTable([
+      ['Category', 'CO2e (kg)'],
+      ['Transport', trans],
+      ['Energy', energy],
+      ['Food', food],
+      ['Consumption', cons],
+      ['Travel', travel],
+      ['Waste', waste]
+    ]);
+  }
+  
+  const options = {
+    backgroundColor: 'transparent',
+    pieHole: 0.65,
+    colors: !hasData 
+      ? ['rgba(255, 255, 255, 0.05)'] 
+      : ['#38bdf8', '#fbbf24', '#f97316', '#c084fc', '#f43f5e', '#94a3b8'],
+    legend: 'none',
+    pieSliceText: 'none',
+    chartArea: {width: '100%', height: '100%', left: 0, top: 0, right: 0, bottom: 0},
+    enableInteractivity: hasData,
+    tooltip: {
+      textStyle: {color: '#f1f5f9', fontName: 'Inter', fontSize: 12},
+      showColorCode: true
+    }
+  };
+
+  const chartContainer = document.getElementById('google-pie-chart');
+  if (chartContainer) {
+    const chart = new google.visualization.PieChart(chartContainer);
+    chart.draw(dataTable, options);
+  }
+}
+
+// Google Sign-In Callback handler
+window.handleCredentialResponse = function(response) {
+  try {
+    const base64Url = response.credential.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+
+    const profileData = JSON.parse(jsonPayload);
+    
+    state.google_user = {
+      name: profileData.name,
+      email: profileData.email,
+      picture: profileData.picture
+    };
+    saveState();
+    
+    showGoogleUser(profileData.name, profileData.picture);
+    
+    appendAssistantMessage(`👋 Hello **${profileData.name}**! Signed in successfully with your Google Account **${profileData.email}**.`);
+  } catch (e) {
+    console.error("Error decoding Google JWT credential:", e);
+  }
+};
+
+function showGoogleUser(name, picture) {
+  const profileContainer = document.getElementById('google-user-profile');
+  const nameEl = document.getElementById('google-user-name');
+  const avatarEl = document.getElementById('google-user-avatar');
+  const signInBtn = document.getElementById('google-signin-btn-container');
+  
+  if (profileContainer && nameEl && avatarEl) {
+    nameEl.textContent = name.split(' ')[0]; // Use first name
+    avatarEl.src = picture;
+    profileContainer.style.display = 'flex';
+    if (signInBtn) signInBtn.style.display = 'none';
+  }
+}
+
+function initGoogleServices() {
+  if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+    google.accounts.id.initialize({
+      client_id: "87654321-mockclientid.apps.googleusercontent.com",
+      callback: window.handleCredentialResponse
+    });
+    
+    const signInBtnContainer = document.getElementById("google-signin-btn-container");
+    if (signInBtnContainer) {
+      google.accounts.id.renderButton(
+        signInBtnContainer,
+        { theme: "dark", size: "medium", shape: "rectangular" }
+      );
+    }
+  }
+
+  if (state.google_user) {
+    showGoogleUser(state.google_user.name, state.google_user.picture);
+  }
+}
+

@@ -982,3 +982,55 @@ body {
 .pulse-milestone {
   animation: pulseGlow 1.5s infinite;
 }
+
+/* --- Google Services Styling Integrations --- */
+.goog-te-gadget-simple {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  padding: 6px 12px !important;
+  font-family: var(--font-main) !important;
+  font-size: 0.8rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.goog-te-gadget-simple:hover {
+  background: rgba(16, 185, 129, 0.05) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.goog-te-gadget-simple img {
+  filter: invert(1) brightness(0.8) !important; /* make google icon light colored */
+  margin-right: 6px !important;
+}
+
+.goog-te-gadget-simple a, .goog-te-gadget-simple span {
+  color: var(--text-main) !important;
+  text-decoration: none !important;
+  font-weight: 500 !important;
+}
+
+/* Hide raw Google framing header */
+.goog-te-banner-frame, .goog-te-banner, .skiptranslate {
+  font-family: var(--font-main) !important;
+}
+
+body {
+  top: 0px !important;
+}
+
+/* Make Google Chart tooltips look clean & dark-themed */
+.google-visualization-tooltip {
+  background-color: var(--panel-bg) !important;
+  backdrop-filter: blur(10px) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--glass-glow) !important;
+  padding: 8px 12px !important;
+  font-family: var(--font-main) !important;
+  color: var(--text-main) !important;
+}
+
