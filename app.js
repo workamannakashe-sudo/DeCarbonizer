@@ -925,6 +925,100 @@ function escapeHtml(text) {
 function processActivityLog(text) {
   const query = text.toLowerCase();
   
+  // 0. WEEKLY SUMMARY REQUEST
+  if (query.includes('weekly') || query.includes('summary') || query.includes('report')) {
+    let totals = {
+      Transport: 0,
+      Energy: 0,
+      Food: 0,
+      Consumption: 0,
+      Travel: 0,
+      Waste: 0
+    };
+    
+    state.logs.forEach(log => {
+      if (totals[log.category] !== undefined) {
+        totals[log.category] += log.co2;
+      }
+    });
+    
+    const loggedTotal = Object.values(totals).reduce((a, b) => a + b, 0);
+    
+    // If no logs, estimate based on baseline profile to give an insightful starter report
+    let isBaselineReport = false;
+    if (loggedTotal === 0) {
+      isBaselineReport = true;
+      const p = state.profile;
+      
+      const transFactor = EMISSION_FACTORS.transport[p.transportMode] || 0.18;
+      totals.Transport = (p.weeklyKm * transFactor);
+      
+      const dietFactor = EMISSION_FACTORS.diet[p.dietType] || EMISSION_FACTORS.diet.meat_average;
+      totals.Food = dietFactor * 7;
+      
+      totals.Energy = (EMISSION_FACTORS.energy[p.energySource] || 140) * 12 / 52;
+      totals.Travel = p.monthlyFlights * 12 * EMISSION_FACTORS.flights.average / 52;
+      totals.Consumption = (EMISSION_FACTORS.shopping[p.shoppingHabit] || 55) * 12 / 52;
+      totals.Waste = EMISSION_FACTORS.waste.standard * 12 / 52;
+    }
+    
+    // Find top category
+    let topCat = 'Food';
+    let maxVal = -1;
+    Object.keys(totals).forEach(cat => {
+      if (totals[cat] > maxVal) {
+        maxVal = totals[cat];
+        topCat = cat;
+      }
+    });
+    
+    const totalWeekly = Object.values(totals).reduce((a, b) => a + b, 0);
+    
+    // Build 3 ranked reduction habits from user's current habits list
+    // Sort habits by impact descending
+    const sortedHabits = [...state.habits]
+      .filter(h => !h.checked)
+      .sort((a, b) => b.impact - a.impact);
+      
+    let actionsHtml = '';
+    const top3 = sortedHabits.slice(0, 3);
+    
+    if (top3.length > 0) {
+      top3.forEach((h, index) => {
+        actionsHtml += `${index + 1}. **${h.text}** (Saves ~${h.impact} kg CO₂e/wk)<br>`;
+      });
+    } else {
+      actionsHtml = "You've already activated all suggested reduction actions! Amazing job! 🌿<br>";
+    }
+    
+    // Relatable framing
+    let framingText = '';
+    if (topCat === 'Food') {
+      framingText = "Skipping beef once a week saves ~2.5 kg CO₂e — equal to driving 12 km.";
+    } else if (topCat === 'Transport') {
+      framingText = "Taking public transit instead of driving 30 km saves ~5.4 kg CO₂e — equal to planting 0.3 trees.";
+    } else if (topCat === 'Energy') {
+      framingText = "Washing clothes in cold water saves ~3.5 kg CO₂e — equal to powering a smartphone for a year!";
+    } else {
+      framingText = "Buying secondhand instead of new saves ~10.3 kg CO₂e — equal to charging 1,200 smartphones!";
+    }
+    
+    const summaryMsg = `
+      📊 <strong>EcoTrack Weekly Carbon Summary</strong><br>
+      \${isBaselineReport ? '*(Estimated based on your onboarding profile baseline)*' : '*(Calculated from your logged activities this week)*'}<br><br>
+      • **Total weekly footprint:** ${totalWeekly.toFixed(1)} kg CO₂e<br>
+      • **Top emission driver:** ${topCat} (${totals[topCat].toFixed(1)} kg CO₂e)<br><br>
+      💡 **Relatable Insight:**<br>
+      ${framingText}<br><br>
+      🎯 **Top 3 Recommended Actions to Reduce Impact:**<br>
+      ${actionsHtml}<br>
+      <em>Tip: You can activate these actions directly in your dashboard Checklist on the left!</em>
+    `;
+    
+    appendAssistantMessage(summaryMsg);
+    return;
+  }
+
   // Log metadata variables
   let category = '';
   let description = '';
