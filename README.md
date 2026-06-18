@@ -20,7 +20,11 @@ Designed as a single-page application with a modern, glassmorphic layout, DeCarb
    * **Weekly Micro-Habits:** Custom habit suggestions (e.g., swapping drives for public transit, "Meatless Mondays", etc.) that instantly log savings upon completion.
    * **Activity Feed:** Live list of all daily logging events.
 3. **Conversational Logging (Natural Language Parser):** Users can type sentences like *"I drove 40 km today"*, *"had a beef burger for lunch"*, or *"bought a secondhand jacket"*. The app dynamically extracts activities, weights them with emission coefficients, assigns categories, and returns tailored recommendations.
-4. **Offline-first Local Persistence:** All user states, log history, and checked habits persist in `localStorage`, enabling users to close and reopen the app without data loss.
+4. **Google Services Integrations:**
+   * **Google Charts API:** Renders interactive, animated carbon emission category breakdowns.
+   * **Google Translate Element:** Provides complete multi-language accessibility instantly.
+   * **Google Identity Services:** Adds official client-side "Sign in with Google" prompts to customize profile avatars.
+5. **Offline-first Local Persistence:** All user states, log history, and checked habits persist in `localStorage`, enabling users to close and reopen the app without data loss.
 
 ---
 
