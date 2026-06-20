@@ -470,6 +470,19 @@ document.addEventListener('DOMContentLoaded', () => {
   initMainApp();
   initGoogleServices();
   
+  // Initialize Mobile Tab switcher
+  initMobileTabs();
+  
+  // Initialize 3D Ecosystem Tree Visualizer
+  window.ecosystem3D = new Ecosystem3D('canvas-container');
+  
+  // Seed tree history on fresh load if needed
+  if (state.onboarded && (!state.treeHistory || state.treeHistory.length === 0)) {
+    setupDefaultTreeHistory();
+  }
+  
+  initEcosystemEvents();
+  
   // Render App based on onboarding state
   if (state.onboarded) {
     document.getElementById('onboarding-overlay').classList.add('hidden');
@@ -512,6 +525,7 @@ function initOnboarding() {
       // Complete Onboarding
       state.onboarded = true;
       setupDefaultHabits();
+      setupDefaultTreeHistory();
       saveState();
       
       document.getElementById('onboarding-overlay').classList.add('hidden');
@@ -691,6 +705,17 @@ function refreshDashboard() {
   
   // Render History lists
   renderHistoryList();
+
+  // Update 3D Ecosystem Tree
+  if (window.ecosystem3D && !window.ecosystem3D.isSimulator) {
+    const calculatedHealth = Math.max(0.0, 1.0 - (loggedTotal / 100.0));
+    window.ecosystem3D.updateEcosystem(calculatedHealth, loggedTotal);
+    updateTodayTreeHistory(calculatedHealth);
+    updateHumanLifespan(loggedTotal);
+  } else if (window.ecosystem3D && window.ecosystem3D.isSimulator) {
+    // Keep lifespan updated with simulator value
+    updateHumanLifespan(window.ecosystem3D.currentCo2);
+  }
 }
 
 function renderHabitsList() {
@@ -1346,6 +1371,481 @@ function initGoogleServices() {
 
   if (state.google_user) {
     showGoogleUser(state.google_user.name, state.google_user.picture);
+  }
+}
+
+// --- Ecosystem Event Listeners & Integrations ---
+
+function initMobileTabs() {
+  const tabs = document.querySelectorAll('.mobile-tab-btn');
+  const panels = document.querySelectorAll('.mobile-panel');
+  
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetId = tab.dataset.tab;
+      
+      // Update tab active state and accessibility attributes
+      tabs.forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+      
+      // Toggle panels
+      panels.forEach(p => {
+        if (p.id === targetId) {
+          p.classList.add('active');
+        } else {
+          p.classList.remove('active');
+        }
+      });
+      
+      // Resize 3D canvas if switching to the ecosystem panel
+      if (targetId === 'ecosystem-panel' && window.ecosystem3D) {
+        window.ecosystem3D.onWindowResize();
+      }
+    });
+  });
+}
+
+function initEcosystemEvents() {
+  const btnLive = document.getElementById('btn-mode-live');
+  const btnSim = document.getElementById('btn-mode-sim');
+  const simPanel = document.getElementById('sim-control-panel');
+  const simSlider = document.getElementById('sim-co2-slider');
+  const simValText = document.getElementById('sim-co2-val');
+  const btnWater = document.getElementById('btn-water-tree');
+  const btnCleanse = document.getElementById('btn-cleanse-air');
+  
+  // Sub-tabs
+  const btnSubtabVis = document.getElementById('btn-subtab-vis');
+  const btnSubtabInsights = document.getElementById('btn-subtab-insights');
+  const visContent = document.getElementById('ecosystem-vis-content');
+  const insightsContent = document.getElementById('ecosystem-insights-content');
+  const modeSelector = document.getElementById('eco-mode-selector-wrapper');
+
+  if (btnSubtabVis && btnSubtabInsights && visContent && insightsContent) {
+    btnSubtabVis.addEventListener('click', () => {
+      btnSubtabVis.classList.add('active');
+      btnSubtabVis.setAttribute('aria-selected', 'true');
+      btnSubtabInsights.classList.remove('active');
+      btnSubtabInsights.setAttribute('aria-selected', 'false');
+      
+      visContent.style.display = 'flex';
+      insightsContent.style.display = 'none';
+      if (modeSelector) modeSelector.style.display = 'flex';
+      
+      // Resize WebGL canvas
+      if (window.ecosystem3D) window.ecosystem3D.onWindowResize();
+    });
+
+    btnSubtabInsights.addEventListener('click', () => {
+      btnSubtabInsights.classList.add('active');
+      btnSubtabInsights.setAttribute('aria-selected', 'true');
+      btnSubtabVis.classList.remove('active');
+      btnSubtabVis.setAttribute('aria-selected', 'false');
+      
+      visContent.style.display = 'none';
+      insightsContent.style.display = 'flex';
+      if (modeSelector) modeSelector.style.display = 'none';
+      
+      // Render components
+      renderTreeHistory();
+      
+      // Draw line chart
+      setTimeout(() => {
+        drawGlobalWarmingChart();
+      }, 60);
+    });
+  }
+
+  if (btnLive && btnSim) {
+    btnLive.addEventListener('click', () => {
+      btnLive.classList.add('active');
+      btnLive.setAttribute('aria-checked', 'true');
+      btnSim.classList.remove('active');
+      btnSim.setAttribute('aria-checked', 'false');
+      if (simPanel) simPanel.style.display = 'none';
+      if (window.ecosystem3D) {
+        window.ecosystem3D.isSimulator = false;
+        // Sync back to live values
+        refreshDashboard();
+      }
+    });
+
+    btnSim.addEventListener('click', () => {
+      btnSim.classList.add('active');
+      btnSim.setAttribute('aria-checked', 'true');
+      btnLive.classList.remove('active');
+      btnLive.setAttribute('aria-checked', 'false');
+      if (simPanel) simPanel.style.display = 'block';
+      if (window.ecosystem3D) {
+        window.ecosystem3D.isSimulator = true;
+        // Sync to current slider value
+        const val = parseFloat(simSlider.value);
+        const simHealth = Math.max(0.0, 1.0 - (val / 100.0));
+        window.ecosystem3D.updateEcosystem(simHealth, val);
+        updateHumanLifespan(val);
+      }
+    });
+  }
+
+  if (simSlider) {
+    simSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      if (simValText) simValText.textContent = `${val.toFixed(1)} kg`;
+      if (window.ecosystem3D && window.ecosystem3D.isSimulator) {
+        const simHealth = Math.max(0.0, 1.0 - (val / 100.0));
+        window.ecosystem3D.updateEcosystem(simHealth, val);
+        updateHumanLifespan(val);
+      }
+    });
+    // Set initial text
+    if (simValText) simValText.textContent = `${parseFloat(simSlider.value).toFixed(1)} kg`;
+  }
+
+  if (btnWater) {
+    btnWater.addEventListener('click', () => {
+      if (window.ecosystem3D) {
+        window.ecosystem3D.waterTree();
+        
+        // Log a negative carbon activity representing saving carbon
+        const waterLog = {
+          id: 'log_' + Date.now(),
+          category: 'Waste',
+          description: 'Watered and cared for tree ecosystem',
+          co2: -2.0, // reduces total weekly carbon
+          timestamp: new Date().toISOString()
+        };
+        
+        state.logs.push(waterLog);
+        saveState();
+        refreshDashboard();
+        
+        // Add a friendly notification in chat
+        appendAssistantMessage("💧 *Water Tree active!* You've completed a watering activity, offsetting **2.0 kg CO₂e** from your weekly emissions tracker! Watch your tree flourish.");
+      }
+    });
+  }
+
+  if (btnCleanse) {
+    btnCleanse.addEventListener('click', () => {
+      if (window.ecosystem3D) {
+        window.ecosystem3D.cleanseAir();
+        appendAssistantMessage("🌬️ *Cleanse Air active!* Fresh winds dispel the dark CO₂ smog from the tree landscape. Keep logging green choices to maintain a clean climate!");
+      }
+    });
+  }
+
+  // Load initial weather fetching
+  setTimeout(() => {
+    fetchLiveWeather();
+  }, 800);
+}
+
+// --- Daily Tree History Logic ---
+
+function setupDefaultTreeHistory() {
+  const history = [];
+  const today = new Date();
+  
+  for (let i = 5; i >= 1; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    
+    let health, status;
+    if (i === 5) { health = 0.94; status = 'Pristine'; }
+    else if (i === 4) { health = 0.88; status = 'Pristine'; }
+    else if (i === 3) { health = 0.72; status = 'Stressed'; }
+    else if (i === 2) { health = 0.65; status = 'Stressed'; }
+    else { health = 0.84; status = 'Pristine'; }
+    
+    history.push({
+      date: dateStr,
+      health: health,
+      status: status
+    });
+  }
+  
+  state.treeHistory = history;
+}
+
+function updateTodayTreeHistory(health) {
+  if (!state.treeHistory) state.treeHistory = [];
+  
+  const todayStr = new Date().toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const existing = state.treeHistory.find(h => h.date === todayStr);
+  
+  let status = 'Pristine';
+  if (health >= 0.85) status = 'Pristine';
+  else if (health >= 0.6) status = 'Stressed';
+  else if (health >= 0.3) status = 'Dying';
+  else status = 'Decayed';
+
+  if (existing) {
+    existing.health = health;
+    existing.status = status;
+  } else {
+    state.treeHistory.push({
+      date: todayStr,
+      health: health,
+      status: status
+    });
+    if (state.treeHistory.length > 7) {
+      state.treeHistory.shift();
+    }
+  }
+  saveState();
+  renderTreeHistory();
+}
+
+function renderTreeHistory() {
+  const container = document.getElementById('tree-history-list');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  if (!state.treeHistory || state.treeHistory.length === 0) {
+    container.innerHTML = '<div style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:15px 0;">No history logged.</div>';
+    return;
+  }
+  
+  state.treeHistory.slice().reverse().forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'tree-history-item';
+    
+    let color = 'var(--primary)';
+    let bg = 'rgba(16, 185, 129, 0.1)';
+    let border = 'rgba(16, 185, 129, 0.2)';
+    
+    if (item.status === 'Stressed') {
+      color = 'var(--color-energy)';
+      bg = 'rgba(251, 191, 36, 0.1)';
+      border = 'rgba(251, 191, 36, 0.2)';
+    } else if (item.status === 'Dying') {
+      color = 'var(--color-food)';
+      bg = 'rgba(249, 115, 22, 0.1)';
+      border = 'rgba(249, 115, 22, 0.2)';
+    } else if (item.status === 'Decayed') {
+      color = 'var(--color-travel)';
+      bg = 'rgba(244, 63, 94, 0.1)';
+      border = 'rgba(244, 63, 94, 0.2)';
+    }
+    
+    const pct = Math.round(item.health * 100);
+    
+    row.innerHTML = `
+      <span class="tree-history-date">${item.date}</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:1.1rem;">🌳</span>
+        <span class="tree-history-health" style="background:${bg}; color:${color}; border:1px solid ${border};">
+          Health: ${pct}% (${item.status})
+        </span>
+      </div>
+    `;
+    
+    container.appendChild(row);
+  });
+}
+
+// --- Human Lifespan Projector Logic ---
+
+function updateHumanLifespan(loggedTotal) {
+  const lifespanValEl = document.getElementById('lifespan-val');
+  const offsetEl = document.getElementById('lifespan-offset-lbl');
+  const titleEl = document.getElementById('lifespan-status-title');
+  const descEl = document.getElementById('lifespan-status-desc');
+  const circleEl = document.querySelector('.lifespan-val-circle');
+  
+  if (!lifespanValEl || !offsetEl || !titleEl || !descEl) return;
+  
+  const baseLifespan = 82.5;
+  let reduction = 0;
+  if (loggedTotal > 15.0) {
+    reduction = Math.min(20.0, (loggedTotal - 15.0) * 0.12);
+  }
+  
+  const currentLifespan = (baseLifespan - reduction).toFixed(1);
+  lifespanValEl.textContent = currentLifespan;
+  
+  if (reduction > 0) {
+    offsetEl.textContent = `-${reduction.toFixed(1)} years`;
+    offsetEl.style.background = 'rgba(244, 63, 94, 0.1)';
+    offsetEl.style.color = 'var(--color-travel)';
+  } else {
+    offsetEl.textContent = 'Optimal (+0.0)';
+    offsetEl.style.background = 'rgba(16, 185, 129, 0.1)';
+    offsetEl.style.color = 'var(--primary)';
+  }
+  
+  let statusTitle = 'Optimal Health Condition';
+  let statusDesc = 'Your carbon emissions are within sustainable targets. Air purity and planetary heat strain support full life expectancy potential.';
+  let themeColor = 'var(--primary)';
+  let glowColor = 'var(--primary-glow)';
+  
+  if (reduction > 10.0) {
+    statusTitle = 'Severe Climate Strain';
+    statusDesc = 'Critical carbon footprints expose populations to heightened levels of heat stress, air particulate contamination, and resource strain, severely cutting lifespan projections.';
+    themeColor = 'var(--color-travel)';
+    glowColor = 'rgba(244, 63, 94, 0.3)';
+  } else if (reduction > 4.0) {
+    statusTitle = 'Moderate Heat & Smog Impact';
+    statusDesc = 'Elevated weekly emissions contribute directly to air quality decay and heat stresses, increasing susceptibility to pulmonary and atmospheric strain.';
+    themeColor = 'var(--color-food)';
+    glowColor = 'rgba(249, 115, 22, 0.3)';
+  } else if (reduction > 0.5) {
+    statusTitle = 'Mild Environmental Strain';
+    statusDesc = 'Slightly exceeding sustainable limits registers minor resource and ecological imbalances, leading to minor negative respiratory offsets over time.';
+    themeColor = 'var(--color-energy)';
+    glowColor = 'rgba(251, 191, 36, 0.3)';
+  }
+  
+  titleEl.textContent = statusTitle;
+  titleEl.style.color = themeColor;
+  descEl.textContent = statusDesc;
+  
+  if (circleEl) {
+    circleEl.style.borderColor = themeColor;
+    circleEl.style.boxShadow = `0 0 15px ${glowColor}`;
+  }
+}
+
+// --- Live Geolocation & Weather Controller ---
+
+function fetchLiveWeather() {
+  const iconEl = document.getElementById('weather-icon');
+  const tempEl = document.getElementById('weather-temp');
+  const condEl = document.getElementById('weather-condition');
+  
+  if (!iconEl || !tempEl || !condEl) return;
+  
+  const defaults = {
+    US: { lat: 38.9072, lon: -77.0369, city: "Washington D.C." },
+    UK: { lat: 51.5074, lon: -0.1278, city: "London" },
+    EU: { lat: 50.8503, lon: 4.3517, city: "Brussels" },
+    IN: { lat: 28.6139, lon: 77.2090, city: "New Delhi" },
+    GL: { lat: 46.2044, lon: 6.1432, city: "Geneva" }
+  };
+  
+  const userLoc = state.profile.location || 'GL';
+  const def = defaults[userLoc] || defaults.GL;
+  
+  const successCallback = (position) => {
+    const lat = position.coords.latitude;
+    const lon = position.coords.longitude;
+    getWeatherData(lat, lon, "Your Location");
+  };
+  
+  const errorCallback = (err) => {
+    console.warn(`Geolocation failed: ${err.message}. Using default capital coordinate.`);
+    getWeatherData(def.lat, def.lon, def.city);
+  };
+  
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(successCallback, errorCallback, { timeout: 8000 });
+  } else {
+    errorCallback({ message: "Unsupported browser API" });
+  }
+}
+
+function getWeatherData(lat, lon, label) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,is_day,weather_code,wind_speed_10m`;
+  
+  fetch(url)
+    .then(res => res.json())
+    .then(data => {
+      if (data && data.current) {
+        const c = data.current;
+        const temp = c.temperature_2m;
+        const code = c.weather_code;
+        const isDay = c.is_day;
+        const wind = c.wind_speed_10m;
+        
+        const w = resolveWeatherCode(code);
+        
+        const tempEl = document.getElementById('weather-temp');
+        const iconEl = document.getElementById('weather-icon');
+        const condEl = document.getElementById('weather-condition');
+        
+        if (tempEl) tempEl.textContent = `${Math.round(temp)}°C`;
+        if (iconEl) iconEl.textContent = w.icon;
+        if (condEl) condEl.textContent = `${w.text} • ${label}`;
+        
+        if (window.ecosystem3D) {
+          window.ecosystem3D.updateWeather(temp, code, isDay, wind);
+        }
+      }
+    })
+    .catch(err => {
+      console.error("Error fetching weather:", err);
+      const tempEl = document.getElementById('weather-temp');
+      const condEl = document.getElementById('weather-condition');
+      if (tempEl) tempEl.textContent = "18°C";
+      if (condEl) condEl.textContent = "Sunny • Connection Offline";
+    });
+}
+
+function resolveWeatherCode(code) {
+  if (code === 0) return { icon: "☀️", text: "Sunny" };
+  if ([1, 2, 3].includes(code)) return { icon: "⛅", text: "Cloudy" };
+  if ([45, 48].includes(code)) return { icon: "🌫️", text: "Foggy" };
+  if ([51, 53, 55].includes(code)) return { icon: "🌧️", text: "Drizzle" };
+  if ([61, 63, 65].includes(code)) return { icon: "🌧️", text: "Rain" };
+  if ([71, 73, 75, 77].includes(code)) return { icon: "❄️", text: "Snowy" };
+  if ([80, 81, 82].includes(code)) return { icon: "🚿", text: "Showers" };
+  if ([85, 86].includes(code)) return { icon: "❄️", text: "Snow Showers" };
+  if ([95, 96, 99].includes(code)) return { icon: "⛈️", text: "Stormy" };
+  return { icon: "☀️", text: "Clear" };
+}
+
+// --- Google Line Chart (Global Warming) ---
+
+function drawGlobalWarmingChart() {
+  if (typeof google === 'undefined' || !google.visualization || !document.getElementById('climate-warming-chart')) return;
+  
+  const climateData = google.visualization.arrayToDataTable([
+    ['Year', 'Temp Anomaly (°C)'],
+    ['1880', -0.16],
+    ['1900', -0.07],
+    ['1920', -0.27],
+    ['1940', 0.13],
+    ['1960', -0.02],
+    ['1980', 0.27],
+    ['2000', 0.40],
+    ['2010', 0.72],
+    ['2020', 1.02],
+    ['2025', 1.25],
+    ['2026', 1.38]
+  ]);
+
+  const options = {
+    backgroundColor: 'transparent',
+    hAxis: {
+      textStyle: {color: '#94a3b8', fontName: 'Inter', fontSize: 10},
+      gridlines: {color: 'rgba(255,255,255,0.03)'}
+    },
+    vAxis: {
+      textStyle: {color: '#94a3b8', fontName: 'Inter', fontSize: 10},
+      gridlines: {color: 'rgba(255,255,255,0.03)'},
+      format: '#.##°C'
+    },
+    colors: ['#f43f5e'],
+    legend: 'none',
+    areaOpacity: 0.12,
+    chartArea: {width: '88%', height: '75%', left: 40, top: 15, right: 10, bottom: 25},
+    lineWidth: 2.5,
+    tooltip: {
+      textStyle: {color: '#f1f5f9', fontName: 'Inter', fontSize: 11},
+      showColorCode: true
+    }
+  };
+
+  const chartContainer = document.getElementById('climate-warming-chart');
+  if (chartContainer) {
+    const chart = new google.visualization.AreaChart(chartContainer);
+    chart.draw(climateData, options);
   }
 }
 

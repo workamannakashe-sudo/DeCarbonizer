@@ -18,13 +18,18 @@ Designed as a single-page application with a modern, glassmorphic layout, DeCarb
    * **Real-time Carbon Budget Bar:** Highlights weekly carbon consumption compared to the global **2-tonne annual sustainable target** (38.5 kg CO₂e per week limit).
    * **Category-Specific Breakdown:** An animated SVG donut chart and matching color-coded legend categorize emissions into 🚗 Transport, ⚡ Energy, 🍔 Food, 🛍️ Consumption, ✈️ Travel, and 🗑️ Waste.
    * **Weekly Micro-Habits:** Custom habit suggestions (e.g., swapping drives for public transit, "Meatless Mondays", etc.) that instantly log savings upon completion.
-   * **Activity Feed:** Live list of all daily logging events.
-3. **Conversational Logging (Natural Language Parser):** Users can type sentences like *"I drove 40 km today"*, *"had a beef burger for lunch"*, or *"bought a secondhand jacket"*. The app dynamically extracts activities, weights them with emission coefficients, assigns categories, and returns tailored recommendations.
-4. **Google Services Integrations:**
+    * **Activity Feed:** Live list of all daily logging events.
+3. **3D Ecosystem Tree Visualizer & Simulator:**
+   * **Real-time 3D Feedback**: A procedural fractal tree that visually degrades or flourishes. As emissions rise, leaves shift colors (green -> yellow -> orange -> brown -> black) and physically fall. At high pollution levels, the leaves drop completely and a thick grey CO₂ smog rises from cracked soil.
+   * **Flourishing Effects**: When carbon footprint is kept low (below sustainable limits), the tree blossoms and floats glowing green firefly/pollen particles.
+   * **Manual Simulator Mode**: Allows users to override live statistics and drag a simulator slider (0 kg to 150 kg) to see the transition effects live.
+   * **Interactive Buttons**: Users can "Water Tree" to trigger 3D rain (reducing carbon logs by 2.0 kg) or click "Cleanse Air" to push smog away with expanding wind waves.
+4. **Conversational Logging (Natural Language Parser):** Users can type sentences like *"I drove 40 km today"*, *"had a beef burger for lunch"*, or *"bought a secondhand jacket"*. The app dynamically extracts activities, weights them with emission coefficients, assigns categories, and returns tailored recommendations.
+5. **Google Services Integrations:**
    * **Google Charts API:** Renders interactive, animated carbon emission category breakdowns.
    * **Google Translate Element:** Provides complete multi-language accessibility instantly.
    * **Google Identity Services:** Adds official client-side "Sign in with Google" prompts to customize profile avatars.
-5. **Offline-first Local Persistence:** All user states, log history, and checked habits persist in `localStorage`, enabling users to close and reopen the app without data loss.
+6. **Offline-first Local Persistence:** All user states, log history, and checked habits persist in `localStorage`, enabling users to close and reopen the app without data loss.
 
 ---
 
@@ -70,8 +75,9 @@ All coefficients are derived from **IPCC** and **EPA** standard baselines (measu
 
 To satisfy submission guidelines and maximize run efficiency:
 * **Core Languages:** Semantic HTML5, Vanilla ES6+ JavaScript, Vanilla CSS.
-* **No Dependencies:** Zero external frameworks or node compilation steps (no React/Vue/Tailwind packages to bloat build sizes, keeping the repository size **under 200 KB**, well below the 10 MB limit).
-* **Rich Glassmorphic Styles:** Modern gradients, backdrop filters, outline shadows, custom scrollbars, and keyframe animations create an premium visual workspace.
+* **3D Graphics & Engine:** Three.js and OrbitControls loaded via lightweight CDN integration.
+* **No Heavy Framework Dependencies:** Zero React/Vue/Tailwind compile chains to bloat build sizes, keeping the repository lightweight, fast-loading, and responsive.
+* **Rich Glassmorphic Styles:** Modern gradients, backdrop filters, outline shadows, custom scrollbars, and keyframe animations create a premium visual workspace.
 
 ---
 
@@ -85,22 +91,22 @@ To satisfy submission guidelines and maximize run efficiency:
 
 ## 🏁 Running the Application Locally
 
-Since DeCarbonizer runs on standard client-side JS, you can open it directly in any modern browser:
+Since DeCarbonizer is built on native web technologies, it can be run in multiple ways:
 
-### Option A: Direct File Open
+### Option A: Native Node Server (Recommended)
+This uses the included HTTP server to serve files cleanly on port 8080.
+1. Run the start command:
+   ```bash
+   npm start
+   ```
+2. Open your browser to `http://localhost:8080`.
+
+### Option B: Direct File Open
 Simply double-click or drag-and-drop the [index.html](index.html) file into your browser of choice.
 
-### Option B: Local Static Server
-If you prefer a local server environment, run standard HTTP servers from the repository root:
-
-**Using Python:**
+### Option C: Python Static Server
+If you prefer Python, run the following command in the repository root:
 ```bash
 python -m http.server 8080
-```
-Then navigate to `http://localhost:8080` in your browser.
-
-**Using Node / npm:**
-```bash
-npx http-server -p 8080
 ```
 Then navigate to `http://localhost:8080` in your browser.

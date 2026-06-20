@@ -10,6 +10,10 @@
   <!-- Google client services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  
+  <!-- Three.js Library & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
 
@@ -43,8 +47,21 @@
   <!-- Main Application Wrapper -->
   <div id="app-container">
     
+    <!-- Mobile Navigation Tabs (Only visible on mobile) -->
+    <div class="mobile-tabs-nav" role="tablist" aria-label="Application Panels">
+      <button class="mobile-tab-btn active" data-tab="dashboard-panel" role="tab" aria-selected="true" aria-controls="dashboard-panel" id="tab-dashboard">
+        <span>📊</span> Dashboard
+      </button>
+      <button class="mobile-tab-btn" data-tab="ecosystem-panel" role="tab" aria-selected="false" aria-controls="ecosystem-panel" id="tab-ecosystem">
+        <span>🌳</span> Ecosystem
+      </button>
+      <button class="mobile-tab-btn" data-tab="chat-panel" role="tab" aria-selected="false" aria-controls="chat-panel" id="tab-chat">
+        <span>💬</span> Assistant
+      </button>
+    </div>
+    
     <!-- Left Column: Dashboard Panel -->
-    <div id="dashboard-panel" class="glass-panel">
+    <div id="dashboard-panel" class="glass-panel mobile-panel active" role="tabpanel" aria-labelledby="tab-dashboard" aria-label="Dashboard Details">
       
       <div class="header-bar">
         <h1 class="brand-title" id="logo-header">
@@ -199,8 +216,150 @@
 
     </div>
 
+    <!-- Middle Column: 3D Ecosystem Tree Panel -->
+    <div id="ecosystem-panel" class="glass-panel mobile-panel" role="tabpanel" aria-labelledby="tab-ecosystem" aria-label="3D Tree Ecosystem Visualizer">
+      <div class="ecosystem-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span class="ecosystem-icon" aria-hidden="true">🌳</span>
+          <div>
+            <h2 class="panel-title" id="eco-panel-title" style="font-family: var(--font-title); font-size: 1.2rem; font-weight: 700; margin: 0; background: linear-gradient(135deg, #10b981 0%, #059669 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Ecosystem Live</h2>
+            <span class="panel-subtitle" style="font-size: 0.7rem; color: var(--text-muted);">Interactive 3D Environmental Feedback</span>
+          </div>
+        </div>
+        
+        <!-- Tab Selectors & Mode Selectors -->
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <div class="ecosystem-tab-selector" role="tablist" aria-label="Ecosystem Views">
+            <button id="btn-subtab-vis" class="eco-tab-btn active" role="tab" aria-selected="true" aria-controls="ecosystem-vis-content" title="Show 3D Tree Visualizer">Visualizer</button>
+            <button id="btn-subtab-insights" class="eco-tab-btn" role="tab" aria-selected="false" aria-controls="ecosystem-insights-content" title="Show Climate Insights & Data">Insights</button>
+          </div>
+          <div class="ecosystem-mode-selector" id="eco-mode-selector-wrapper" role="radiogroup" aria-label="Visualizer Mode">
+            <button id="btn-mode-live" class="eco-mode-btn active" role="radio" aria-checked="true" title="Sync tree state with your weekly carbon stats">Live Sync</button>
+            <button id="btn-mode-sim" class="eco-mode-btn" role="radio" aria-checked="false" title="Simulate various carbon footprint levels manually">Simulator</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Content Panel 1: 3D Visualizer -->
+      <div id="ecosystem-vis-content" style="display: flex; flex-direction: column; gap: 16px; height: 100%;">
+        <!-- 3D Canvas Container -->
+        <div id="canvas-container" role="img" aria-label="3D environment showing a tree representing ecological health">
+          <!-- Canvas injected by tree.js -->
+          
+          <!-- Live status overlays -->
+          <div class="canvas-overlay top-left">
+            <div class="eco-health-badge" aria-live="polite">
+              <span class="eco-health-label">Ecosystem Health</span>
+              <span class="eco-health-value" id="eco-health-val">100%</span>
+            </div>
+          </div>
+          
+          <div class="canvas-overlay top-right">
+            <div class="eco-status-badge" id="eco-status-badge" aria-live="polite">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="eco-status-text">Pristine</span>
+            </div>
+          </div>
+
+          <!-- Weather Overlay (Bottom Left) -->
+          <div class="canvas-overlay bottom-left" id="weather-overlay">
+            <div class="eco-weather-badge" aria-live="polite">
+              <span id="weather-icon" aria-hidden="true">☀️</span>
+              <div style="text-align: left;">
+                <div id="weather-temp">--°C</div>
+                <div id="weather-condition" style="font-size:0.65rem; color:var(--text-muted); text-transform:uppercase;">Detecting...</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="canvas-overlay bottom-center" id="sim-control-panel" style="display: none;">
+            <div class="sim-card glass-panel">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span class="sim-label">Simulate Carbon Level:</span>
+                <span class="sim-value" id="sim-co2-val" aria-live="polite">0.0 kg</span>
+              </div>
+              <input type="range" id="sim-co2-slider" class="custom-slider" min="0" max="150" value="0" step="1" aria-label="Simulate Weekly Carbon Footprint in Kilograms">
+            </div>
+          </div>
+        </div>
+        
+        <!-- Ecosystem Stats -->
+        <div class="ecosystem-stats" aria-label="Ecosystem Metrics" aria-live="polite">
+          <div class="eco-stat-box">
+            <span class="eco-stat-lbl">Active Leaves</span>
+            <span class="eco-stat-val" id="eco-stat-leaves">500</span>
+          </div>
+          <div class="eco-stat-box">
+            <span class="eco-stat-lbl">CO₂ Absorption</span>
+            <span class="eco-stat-val" id="eco-stat-absorption">22.0 kg/yr</span>
+          </div>
+          <div class="eco-stat-box">
+            <span class="eco-stat-lbl">Oxygen Output</span>
+            <span class="eco-stat-val" id="eco-stat-oxygen">100%</span>
+          </div>
+        </div>
+
+        <!-- Ecosystem Quick Interactions -->
+        <div class="ecosystem-actions" aria-label="Ecosystem Actions">
+          <button id="btn-water-tree" class="eco-action-btn" title="Complete a mini carbon cleaning habit and water the tree" aria-label="Water Tree: Offset 2 kilograms of CO2 emissions">
+            <span class="btn-icon" aria-hidden="true">💧</span>
+            <div style="text-align: left;">
+              <div class="btn-main-txt">Water Tree</div>
+              <div class="btn-sub-txt">-2.0 kg CO₂e log</div>
+            </div>
+          </button>
+          <button id="btn-cleanse-air" class="eco-action-btn" title="Temporarily clear active smog clouds and trigger fresh winds" aria-label="Cleanse Air: Dispel toxic CO2 smog">
+            <span class="btn-icon" aria-hidden="true">🌬️</span>
+            <div style="text-align: left;">
+              <div class="btn-main-txt">Cleanse Air</div>
+              <div class="btn-sub-txt">Dispel toxic smog</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Content Panel 2: Climate Insights (Initially Hidden) -->
+      <div id="ecosystem-insights-content" class="insight-scroll-container" style="display: none;">
+        
+        <!-- Human Lifespan Projector Card -->
+        <div class="lifespan-card glass-panel" aria-live="polite">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <span class="lifespan-lbl">Human Lifespan Estimate</span>
+            <span class="lifespan-offset" id="lifespan-offset-lbl">-0.0 years</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <div class="lifespan-val-circle">
+              <span id="lifespan-val">82.5</span>
+              <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">Years</span>
+            </div>
+            <div style="flex: 1; text-align: left;">
+              <div class="lifespan-title" id="lifespan-status-title">Optimal Health Condition</div>
+              <p class="lifespan-desc" id="lifespan-status-desc">Your carbon emissions are within sustainable targets. Air purity and planetary heat strain support full life expectancy potential.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Global Warming Chart -->
+        <div class="climate-chart-container glass-panel">
+          <h3 class="insight-section-title">🌍 Global Heat Increase (NASA Temp Anomaly Index)</h3>
+          <div id="climate-warming-chart" style="width: 100%; height: 160px; display: flex; align-items: center; justify-content: center;">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Loading Temperature Chart...</span>
+          </div>
+        </div>
+
+        <!-- Daily Tree Life Archive -->
+        <div class="tree-history-panel glass-panel">
+          <h3 class="insight-section-title">📆 Tree Life History (Daily Log Archive)</h3>
+          <div class="tree-history-list" id="tree-history-list" aria-live="polite">
+            <!-- Dynamic tree logs per day injected here -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <!-- Right Column: Chat Console -->
-    <div id="chat-panel" class="glass-panel">
+    <div id="chat-panel" class="glass-panel mobile-panel" role="tabpanel" aria-labelledby="tab-chat" aria-label="EcoTrack AI Assistant Chat">
       
       <div class="chat-header">
         <div class="assistant-avatar">🤖</div>
@@ -250,6 +409,7 @@
     }
   </script>
   <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+  <script src="tree.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
