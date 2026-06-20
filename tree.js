@@ -17,6 +17,7 @@ class Ecosystem3D {
     this.time = 0;
     this.branches = [];
     this.leaves = [];
+    this.fruits = [];
     this.activeLeafCount = 0;
     this.isWatering = false;
     this.waterLifetime = 0;
@@ -27,6 +28,7 @@ class Ecosystem3D {
     this.createLights();
     this.createGround();
     this.createTree();
+    this.createFace();
     this.createFireflies();
     this.createSmog();
     this.createWaterSystem();
@@ -296,6 +298,47 @@ class Ecosystem3D {
           (Math.random() - 0.5) * 0.12,
           (Math.random() - 0.5) * 0.12,
           (Math.random() - 0.5) * 0.12
+        ),
+        restingTime: 0
+      });
+    }
+
+    // Spawn 1 fruit randomly per cluster with a 40% probability
+    if (Math.random() < 0.40) {
+      const fruitGeom = new THREE.DodecahedronGeometry(0.045, 0); // low-poly fruit look
+      const material = new THREE.MeshStandardMaterial({
+        color: '#ef4444',
+        roughness: 0.6,
+        metalness: 0.1,
+        flatShading: true
+      });
+      const fruitMesh = new THREE.Mesh(fruitGeom, material);
+      fruitMesh.castShadow = true;
+      
+      const offset = new THREE.Vector3(
+        (Math.random() - 0.5) * radius * 0.9,
+        -0.08 - Math.random() * 0.08,
+        (Math.random() - 0.5) * radius * 0.9
+      );
+      
+      fruitMesh.position.copy(position).add(offset);
+      
+      const scale = 0.85 + Math.random() * 0.3;
+      fruitMesh.scale.set(scale, scale, scale);
+      
+      parentGroup.add(fruitMesh);
+
+      this.fruits.push({
+        mesh: fruitMesh,
+        originalPosition: fruitMesh.position.clone(),
+        originalScale: scale,
+        offset: offset.clone(),
+        isDetached: false,
+        velocity: new THREE.Vector3(),
+        rotationalVelocity: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.08,
+          (Math.random() - 0.5) * 0.08,
+          (Math.random() - 0.5) * 0.08
         ),
         restingTime: 0
       });
@@ -586,6 +629,12 @@ class Ecosystem3D {
 
     // 2. Animate and update leaves (growth, color, falling)
     this.updateLeaves();
+
+    // 2b. Animate and update fruits (growth, color, falling)
+    this.updateFruits();
+
+    // 2c. Update face emotion based on health
+    this.updateFace();
 
     // 3. Update environment colors (grass & soil)
     this.updateEnvironmentColors();
@@ -1041,5 +1090,186 @@ class Ecosystem3D {
         this.sunLight.color.lerp(this.targetSunColor, 0.03);
       }
     }
+  }
+
+  createFace() {
+    this.faceGroup = new THREE.Group();
+    // Position on front of the main trunk
+    this.faceGroup.position.set(0, -1.32, 0.076);
+    this.treeGroup.add(this.faceGroup);
+
+    // Common materials
+    this.eyeWhiteMaterial = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+    this.eyePupilMaterial = new THREE.MeshBasicMaterial({ color: '#18181b' });
+    this.mouthMaterial = new THREE.MeshBasicMaterial({ color: '#27272a' });
+    this.tearMaterial = new THREE.MeshBasicMaterial({ color: '#38bdf8' });
+
+    // Eyes
+    const eyeGeom = new THREE.SphereGeometry(0.015, 8, 8);
+    const pupilGeom = new THREE.SphereGeometry(0.007, 8, 8);
+
+    // Left Eye
+    this.leftEye = new THREE.Group();
+    const lWhite = new THREE.Mesh(eyeGeom, this.eyeWhiteMaterial);
+    const lPupil = new THREE.Mesh(pupilGeom, this.eyePupilMaterial);
+    lPupil.position.set(0, 0, 0.01);
+    this.leftEye.add(lWhite, lPupil);
+    this.leftEye.position.set(-0.024, 0, 0);
+    this.faceGroup.add(this.leftEye);
+
+    // Right Eye
+    this.rightEye = new THREE.Group();
+    const rWhite = new THREE.Mesh(eyeGeom, this.eyeWhiteMaterial);
+    const rPupil = new THREE.Mesh(pupilGeom, this.eyePupilMaterial);
+    rPupil.position.set(0, 0, 0.01);
+    this.rightEye.add(rWhite, rPupil);
+    this.rightEye.position.set(0.024, 0, 0);
+    this.faceGroup.add(this.rightEye);
+
+    // Mouth (5 small spheres positioned in an arc/line)
+    this.mouthNodes = [];
+    const mouthGeom = new THREE.SphereGeometry(0.008, 6, 6);
+    for (let i = 0; i < 5; i++) {
+      const node = new THREE.Mesh(mouthGeom, this.mouthMaterial);
+      const x = -0.02 + (i * 0.01);
+      node.position.set(x, -0.04, 0);
+      this.faceGroup.add(node);
+      this.mouthNodes.push(node);
+    }
+
+    // Tears (two small blue teardrops)
+    this.tears = [];
+    const tearGeom = new THREE.ConeGeometry(0.006, 0.015, 4);
+    tearGeom.rotateX(Math.PI); // Point downwards
+    for (let i = 0; i < 2; i++) {
+      const tear = new THREE.Mesh(tearGeom, this.tearMaterial);
+      tear.position.set(i === 0 ? -0.024 : 0.024, -0.02, 0.01);
+      tear.scale.set(0, 0, 0); // hidden initially
+      this.faceGroup.add(tear);
+      this.tears.push(tear);
+    }
+  }
+
+  updateFace() {
+    if (!this.faceGroup) return;
+
+    // Shift eyes and mouth based on health (Happy vs Neutral vs Frowning)
+    if (this.health >= 0.70) {
+      // Happy Smile
+      this.mouthNodes[0].position.y = -0.032;
+      this.mouthNodes[1].position.y = -0.038;
+      this.mouthNodes[2].position.y = -0.042;
+      this.mouthNodes[3].position.y = -0.038;
+      this.mouthNodes[4].position.y = -0.032;
+
+      // Hide tears
+      this.tears.forEach(t => t.scale.set(0, 0, 0));
+    } else if (this.health >= 0.40) {
+      // Neutral face (Straight line)
+      this.mouthNodes.forEach(node => {
+        node.position.y = -0.04;
+      });
+
+      // Hide tears
+      this.tears.forEach(t => t.scale.set(0, 0, 0));
+    } else {
+      // Sad / Frowning mouth
+      this.mouthNodes[0].position.y = -0.046;
+      this.mouthNodes[1].position.y = -0.040;
+      this.mouthNodes[2].position.y = -0.036;
+      this.mouthNodes[3].position.y = -0.040;
+      this.mouthNodes[4].position.y = -0.046;
+
+      // Make tears fall down
+      this.tears.forEach(t => {
+        t.scale.set(1, 1, 1);
+        t.position.y -= 0.003;
+        
+        // Reset tear when it falls past chin
+        if (t.position.y < -0.12) {
+          t.position.y = -0.02;
+        }
+      });
+    }
+  }
+
+  updateFruits() {
+    // Target attached fruits count based on health
+    const targetAttachedCount = Math.floor(this.fruits.length * this.health);
+    let currentAttached = this.fruits.filter(f => !f.isDetached).length;
+
+    // Detach fruits if health drops
+    if (currentAttached > targetAttachedCount) {
+      const attachedFruits = this.fruits.filter(f => !f.isDetached);
+      const toDetach = attachedFruits[Math.floor(Math.random() * attachedFruits.length)];
+      if (toDetach) {
+        toDetach.isDetached = true;
+        toDetach.restingTime = 0;
+        toDetach.velocity.set(
+          (Math.random() - 0.5) * 0.008,
+          -0.012 - Math.random() * 0.015,
+          (Math.random() - 0.5) * 0.008
+        );
+      }
+    }
+    // Regrow fruits if health recovers
+    else if (currentAttached < targetAttachedCount) {
+      const detachedFruits = this.fruits.filter(f => f.isDetached);
+      const toRegrow = detachedFruits[Math.floor(Math.random() * detachedFruits.length)];
+      if (toRegrow) {
+        toRegrow.isDetached = false;
+        toRegrow.mesh.position.copy(toRegrow.originalPosition);
+        toRegrow.mesh.scale.set(0, 0, 0); // grow from 0
+        toRegrow.velocity.set(0, 0, 0);
+      }
+    }
+
+    let targetColor = new THREE.Color();
+    const timeFactor = this.time;
+
+    this.fruits.forEach((f, idx) => {
+      // Color shifts: Red (healthy) -> Yellow (stressed) -> Brown (decayed) -> Dark (dead)
+      if (this.health >= 0.70) {
+        targetColor.set('#ef4444'); // Healthy Apple Red
+      } else if (this.health >= 0.40) {
+        targetColor.set('#eab308'); // Ripe Yellow
+      } else if (this.health >= 0.15) {
+        targetColor.set('#78350f'); // Rotting Brown
+      } else {
+        targetColor.set('#18181b'); // Rotting Black
+      }
+
+      f.mesh.material.color.lerp(targetColor, 0.05);
+
+      if (f.isDetached) {
+        // Fall down with gravity
+        f.velocity.y -= 0.0012;
+        f.mesh.position.add(f.velocity);
+        
+        f.mesh.rotation.x += f.rotationalVelocity.x;
+        f.mesh.rotation.y += f.rotationalVelocity.y;
+
+        // Ground collision (y = -1.8)
+        if (f.mesh.position.y <= -1.8) {
+          f.mesh.position.y = -1.8;
+          f.velocity.set(0, 0, 0);
+          f.restingTime += 1;
+
+          // Fade out and shrink
+          if (f.restingTime > 60) {
+            f.mesh.scale.lerp(new THREE.Vector3(0, 0, 0), 0.08);
+          }
+        }
+      } else {
+        // Scale up (regrow)
+        const scaleTarget = new THREE.Vector3(f.originalScale, f.originalScale, f.originalScale);
+        f.mesh.scale.lerp(scaleTarget, 0.04);
+        
+        // Sway slightly
+        const fruitSwayX = Math.sin(timeFactor * 1.5 + idx) * 0.015;
+        const fruitSwayY = Math.cos(timeFactor * 1.1 + idx) * 0.015;
+        f.mesh.position.copy(f.originalPosition).add(new THREE.Vector3(fruitSwayX, fruitSwayY, 0));
+      }
+    });
   }
 }
