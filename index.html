@@ -85,6 +85,10 @@
           
           <div id="google-signin-btn-container"></div>
           
+          <button id="guest-login-btn" class="btn-secondary" style="padding: 6px 12px; font-size: 0.75rem; border-color: var(--primary); color: var(--primary);" title="Sign in manually as a Guest without Google Account">
+            Guest Login
+          </button>
+          
           <button id="reset-profile-btn" class="btn-secondary" style="padding: 6px 12px; font-size: 0.75rem;" title="Reset profile and restart onboarding">
             Reset Profile
           </button>
@@ -339,6 +343,27 @@
           </div>
         </div>
 
+        <!-- Planetary Carbon Projection Card -->
+        <div class="projection-card glass-panel" aria-live="polite" style="padding: 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.015); display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span class="lifespan-lbl">Annual Planetary Projection</span>
+            <span class="projection-badge" id="projection-impact-badge" style="font-size: 0.75rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: var(--primary);">Sustainable</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 5px;">
+            <div class="projection-stat-box" style="background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Yearly CO₂ Output</span>
+              <span id="proj-yearly-co2" style="font-family: var(--font-title); font-size: 1.15rem; font-weight: 700; color: var(--text-main);">0.0 tonnes</span>
+            </div>
+            <div class="projection-stat-box" style="background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;">Forest Offset Required</span>
+              <span id="proj-trees-needed" style="font-family: var(--font-title); font-size: 1.15rem; font-weight: 700; color: var(--primary);">0 trees</span>
+            </div>
+          </div>
+          <div style="text-align: left; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
+            🌡️ At this emission rate, your contribution to global warming equals approximately <strong id="proj-temp-rise" style="color: var(--color-energy);">0.0</strong> nanodegrees Celsius.
+          </div>
+        </div>
+
         <!-- Global Warming Chart -->
         <div class="climate-chart-container glass-panel">
           <h3 class="insight-section-title">🌍 Global Heat Increase (NASA Temp Anomaly Index)</h3>
@@ -398,6 +423,32 @@
 
     </div>
 
+  </div>
+
+  <!-- Guest Login Modal Overlay -->
+  <div id="guest-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(7, 12, 10, 0.85); backdrop-filter: blur(15px); z-index: 101; justify-content: center; align-items: center;">
+    <div class="onboarding-card glass-panel" style="max-width: 420px; padding: 30px;">
+      <h2 class="ob-step-title" style="font-size: 1.4rem;">Customize Guest Profile</h2>
+      <p class="ob-step-desc" style="font-size: 0.85rem;">Set up a custom local profile to personalize your carbon tracker.</p>
+      
+      <div class="slider-container" style="margin-top: 10px;">
+        <label class="stat-label">Choose Nickname</label>
+        <input type="text" id="guest-input-name" class="input-dropdown" placeholder="Enter nickname..." value="EcoHero" style="font-size: 0.95rem;">
+        
+        <label class="stat-label" style="margin-top: 15px;">Choose Avatar</label>
+        <div style="display: flex; justify-content: space-around; font-size: 2rem; margin-top: 5px;" id="guest-avatar-selector">
+          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option selected" data-emoji="🌳">🌳</span>
+          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" data-emoji="⚡">⚡</span>
+          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" data-emoji="🚲">🚲</span>
+          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" data-emoji="🥗">🥗</span>
+        </div>
+      </div>
+      
+      <div class="ob-actions" style="margin-top: 20px; justify-content: flex-end; gap: 10px;">
+        <button id="guest-cancel-btn" class="btn-secondary">Cancel</button>
+        <button id="guest-save-btn" class="btn-primary">Save Profile</button>
+      </div>
+    </div>
   </div>
 
   <script type="text/javascript">

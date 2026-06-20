@@ -1588,3 +1588,35 @@ body {
   border-radius: 6px;
   font-family: var(--font-title);
 }
+
+/* Guest avatar selector styling */
+.avatar-option {
+  transition: all 0.2s ease;
+  user-select: none;
+}
+.avatar-option:hover {
+  transform: scale(1.15);
+  background: rgba(255, 255, 255, 0.05);
+}
+.avatar-option.selected {
+  border-color: var(--primary) !important;
+  background: rgba(16, 185, 129, 0.15);
+  box-shadow: 0 0 12px var(--primary-glow);
+}
+
+/* Accessibility Focus Ring Styling (High Contrast keyboard visibility) */
+button:focus-visible, 
+input:focus-visible, 
+select:focus-visible {
+  outline: 2px solid var(--primary) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 8px var(--primary-glow) !important;
+}
+
+/* Planetary projection styles */
+.projection-card {
+  transition: border-color 0.3s ease;
+}
+.projection-stat-box {
+  transition: background 0.3s ease;
+}

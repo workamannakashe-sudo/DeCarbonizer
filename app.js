@@ -129,6 +129,9 @@ const onboardingSteps = [
           <div class="slider-val-bubble" id="ob-val-household">1</div>
           <input type="range" id="ob-input-household" class="custom-slider" min="1" max="8" value="1">
         </div>
+
+        <label class="stat-label" style="margin-top: 15px;">Your Nickname</label>
+        <input type="text" id="ob-input-name" class="input-dropdown" placeholder="Enter nickname..." value="EcoHero" style="margin-top: 5px; font-size: 0.95rem;">
       </div>
     `,
     init: () => {
@@ -141,6 +144,15 @@ const onboardingSteps = [
     save: () => {
       state.profile.location = document.getElementById('ob-input-location').value;
       state.profile.householdSize = parseInt(document.getElementById('ob-input-household').value);
+      const nameVal = document.getElementById('ob-input-name').value.trim() || "EcoHero";
+      state.profile.nickname = nameVal;
+      if (!state.google_user) {
+        state.google_user = {
+          name: nameVal,
+          picture: "🌳",
+          isGuest: true
+        };
+      }
     }
   },
   {
@@ -469,6 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initOnboarding();
   initMainApp();
   initGoogleServices();
+  initGuestLogin();
   
   // Initialize Mobile Tab switcher
   initMobileTabs();
@@ -712,9 +725,11 @@ function refreshDashboard() {
     window.ecosystem3D.updateEcosystem(calculatedHealth, loggedTotal);
     updateTodayTreeHistory(calculatedHealth);
     updateHumanLifespan(loggedTotal);
+    updatePlanetaryProjection(loggedTotal);
   } else if (window.ecosystem3D && window.ecosystem3D.isSimulator) {
     // Keep lifespan updated with simulator value
     updateHumanLifespan(window.ecosystem3D.currentCo2);
+    updatePlanetaryProjection(window.ecosystem3D.currentCo2);
   }
 }
 
@@ -834,8 +849,12 @@ function initMainApp() {
       // Reset Google Profile UI
       const profileContainer = document.getElementById('google-user-profile');
       const signInBtn = document.getElementById('google-signin-btn-container');
+      const guestBtn = document.getElementById('guest-login-btn');
+      const emojiSpan = document.getElementById('guest-avatar-emoji');
       if (profileContainer) profileContainer.style.display = 'none';
       if (signInBtn) signInBtn.style.display = 'block';
+      if (guestBtn) guestBtn.style.display = 'block';
+      if (emojiSpan) emojiSpan.remove();
       
       // Clear chat
       document.getElementById('chat-messages-container').innerHTML = '';
@@ -1341,12 +1360,34 @@ function showGoogleUser(name, picture) {
   const nameEl = document.getElementById('google-user-name');
   const avatarEl = document.getElementById('google-user-avatar');
   const signInBtn = document.getElementById('google-signin-btn-container');
+  const guestBtn = document.getElementById('guest-login-btn');
   
   if (profileContainer && nameEl && avatarEl) {
     nameEl.textContent = name.split(' ')[0]; // Use first name
-    avatarEl.src = picture;
+    
+    // Check if dynamic picture is a URL
+    if (picture.startsWith('http') || picture.startsWith('data:')) {
+      avatarEl.src = picture;
+      avatarEl.style.display = 'block';
+      const emojiSpan = document.getElementById('guest-avatar-emoji');
+      if (emojiSpan) emojiSpan.remove();
+    } else {
+      // Emoji representation
+      avatarEl.style.display = 'none';
+      let emojiSpan = document.getElementById('guest-avatar-emoji');
+      if (!emojiSpan) {
+        emojiSpan = document.createElement('span');
+        emojiSpan.id = 'guest-avatar-emoji';
+        emojiSpan.style.fontSize = '1.35rem';
+        emojiSpan.style.lineHeight = '1';
+        profileContainer.insertBefore(emojiSpan, nameEl);
+      }
+      emojiSpan.textContent = picture;
+    }
+    
     profileContainer.style.display = 'flex';
     if (signInBtn) signInBtn.style.display = 'none';
+    if (guestBtn) guestBtn.style.display = 'none';
   }
 }
 
@@ -1372,6 +1413,54 @@ function initGoogleServices() {
   if (state.google_user) {
     showGoogleUser(state.google_user.name, state.google_user.picture);
   }
+}
+
+function initGuestLogin() {
+  const guestBtn = document.getElementById('guest-login-btn');
+  const overlay = document.getElementById('guest-login-overlay');
+  const cancelBtn = document.getElementById('guest-cancel-btn');
+  const saveBtn = document.getElementById('guest-save-btn');
+  const avatarOptions = document.querySelectorAll('#guest-avatar-selector .avatar-option');
+  
+  if (!guestBtn || !overlay || !cancelBtn || !saveBtn) return;
+  
+  // 1. Toggle visibility
+  guestBtn.addEventListener('click', () => {
+    overlay.style.display = 'flex';
+    const inputName = document.getElementById('guest-input-name');
+    if (inputName) inputName.focus();
+  });
+  
+  cancelBtn.addEventListener('click', () => {
+    overlay.style.display = 'none';
+  });
+  
+  // 2. Avatar Selection
+  avatarOptions.forEach(opt => {
+    opt.addEventListener('click', () => {
+      avatarOptions.forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+    });
+  });
+  
+  // 3. Save Guest Profile
+  saveBtn.addEventListener('click', () => {
+    const nameVal = document.getElementById('guest-input-name').value.trim() || "EcoHero";
+    const selectedOpt = document.querySelector('#guest-avatar-selector .avatar-option.selected');
+    const pictureVal = selectedOpt ? selectedOpt.dataset.emoji : "🌳";
+    
+    state.google_user = {
+      name: nameVal,
+      picture: pictureVal,
+      isGuest: true
+    };
+    
+    saveState();
+    showGoogleUser(nameVal, pictureVal);
+    overlay.style.display = 'none';
+    
+    appendAssistantMessage(`👋 Profile updated manually! Welcome, **${nameVal}** ${pictureVal}! Your customized Eco Profile is now active.`);
+  });
 }
 
 // --- Ecosystem Event Listeners & Integrations ---
@@ -1846,6 +1935,39 @@ function drawGlobalWarmingChart() {
   if (chartContainer) {
     const chart = new google.visualization.AreaChart(chartContainer);
     chart.draw(climateData, options);
+  }
+}
+
+function updatePlanetaryProjection(loggedTotal) {
+  const yearlyCo2El = document.getElementById('proj-yearly-co2');
+  const treesNeededEl = document.getElementById('proj-trees-needed');
+  const tempRiseEl = document.getElementById('proj-temp-rise');
+  const badgeEl = document.getElementById('projection-impact-badge');
+  
+  if (!yearlyCo2El || !treesNeededEl || !tempRiseEl || !badgeEl) return;
+  
+  const yearlyCo2Kg = loggedTotal * 52;
+  const yearlyCo2Tonnes = (yearlyCo2Kg / 1000).toFixed(2);
+  const treesRequired = Math.round(yearlyCo2Kg / 22);
+  const tempRiseNano = (yearlyCo2Kg * 0.0015).toFixed(3);
+  
+  yearlyCo2El.textContent = `${yearlyCo2Tonnes} tonnes`;
+  treesNeededEl.textContent = `${treesRequired.toLocaleString()} trees`;
+  tempRiseEl.textContent = tempRiseNano;
+  
+  const weeklySustainable = 2000 / 52;
+  if (loggedTotal <= weeklySustainable) {
+    badgeEl.textContent = "Sustainable";
+    badgeEl.style.background = "rgba(16, 185, 129, 0.1)";
+    badgeEl.style.color = "var(--primary)";
+  } else if (loggedTotal <= weeklySustainable * 2) {
+    badgeEl.textContent = "Moderate Impact";
+    badgeEl.style.background = "rgba(251, 191, 36, 0.1)";
+    badgeEl.style.color = "var(--color-energy)";
+  } else {
+    badgeEl.textContent = "High Strain";
+    badgeEl.style.background = "rgba(244, 63, 94, 0.1)";
+    badgeEl.style.color = "var(--color-travel)";
   }
 }
 
