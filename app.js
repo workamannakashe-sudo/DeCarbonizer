@@ -1386,7 +1386,15 @@ if (typeof google !== 'undefined') {
 function drawGoogleChart(trans, energy, food, cons, travel, waste) {
   if (typeof google === 'undefined' || !google.visualization) return;
   
-  const hasData = (trans + energy + food + cons + travel + waste) > 0;
+  // Clamp category inputs to zero to prevent negative slice values
+  const tVal = Math.max(0, trans);
+  const eVal = Math.max(0, energy);
+  const fVal = Math.max(0, food);
+  const cVal = Math.max(0, cons);
+  const trVal = Math.max(0, travel);
+  const wVal = Math.max(0, waste);
+  
+  const hasData = (tVal + eVal + fVal + cVal + trVal + wVal) > 0;
   
   let dataTable;
   if (!hasData) {
@@ -1397,12 +1405,12 @@ function drawGoogleChart(trans, energy, food, cons, travel, waste) {
   } else {
     dataTable = google.visualization.arrayToDataTable([
       ['Category', 'CO2e (kg)'],
-      ['Transport', trans],
-      ['Energy', energy],
-      ['Food', food],
-      ['Consumption', cons],
-      ['Travel', travel],
-      ['Waste', waste]
+      ['Transport', tVal],
+      ['Energy', eVal],
+      ['Food', fVal],
+      ['Consumption', cVal],
+      ['Travel', trVal],
+      ['Waste', wVal]
     ]);
   }
   

@@ -1320,14 +1320,16 @@ class Ecosystem3D {
     this.scene.add(this.boyGroup);
 
     // State machine variables
-    this.boyState = 'idle'; // 'idle', 'walking_to_tree', 'raising_arm', 'watering', 'lowering_arm', 'walking_back', 'hugging'
-    this.boyActionType = 'water'; // 'water' or 'hug'
+    this.boyState = 'idle'; // 'idle', 'walking_to_tree', 'raising_arm', 'watering', 'lowering_arm', 'walking_back', 'hugging', 'weeping', 'inspecting', 'dancing_tree'
+    this.boyActionType = 'water'; // 'water', 'hug', 'inspect', 'weep', 'dance_wander'
     this.boyAnimTime = 0;
     this.boyTargetPos = new THREE.Vector3(0.4, -1.8, 0.4);
     this.boyHugPos = new THREE.Vector3(0.18, -1.8, 0.18); // closer for hugging
     this.boyRestPos = new THREE.Vector3(1.1, -1.8, 0.7);
     this.speechTimer = 0;
     this.speechBubbleText = '';
+    this.wanderTimer = 0;
+    this.wanderInterval = 500 + Math.random() * 300; // Wander trigger interval (8-13 seconds)
 
     // Create or reuse HTML speech bubble overlay
     this.speechBubble = document.getElementById('boy-speech-bubble');
@@ -1550,18 +1552,25 @@ class Ecosystem3D {
       this.boyGroup.position.copy(this.boyRestPos);
       this.boyGroup.lookAt(0, -1.8, 0); // Face the tree
 
+      // Idle movement: Breathing sways (keeps him in motion always)
+      const breathingFactor = this.health < 0.35 ? 1.5 : 1.0;
+      this.boyTorso.position.y = 0.38 + Math.sin(this.time * 2.5) * 0.005 * breathingFactor;
+      this.leftArm.rotation.z = Math.sin(this.time * 2.5) * 0.02 + 0.02;
+      this.rightArm.rotation.z = -Math.sin(this.time * 2.5) * 0.02 - 0.02;
+
+      // Crying Sobbing Pose (Tree is Dead/Dying)
       if (this.health < 0.35) {
-        // Crying / Sobbing Gesture
-        this.boyHead.rotation.x = 0.35; // head hung low
+        this.boyHead.rotation.x = 0.35; // hang head low
+        this.boyHead.rotation.y = Math.sin(this.time * 16) * 0.05; // shudder in crying
         
-        // Bring hands to face (sobbing)
-        this.leftArm.rotation.x = -Math.PI * 0.75;
+        // Hands cover face/weeping
+        this.leftArm.rotation.x = -Math.PI * 0.75 + Math.sin(this.time * 12) * 0.04;
         this.leftArm.rotation.y = Math.PI * 0.15;
-        this.rightArm.rotation.x = -Math.PI * 0.75;
+        this.rightArm.rotation.x = -Math.PI * 0.75 + Math.sin(this.time * 12) * 0.04;
         this.rightArm.rotation.y = -Math.PI * 0.15;
 
-        // Sobbing body vibration
-        const sob = Math.sin(this.time * 12) * 0.015;
+        // Sobbing chest vibrations
+        const sob = Math.sin(this.time * 12) * 0.012;
         this.boyTorso.position.y = 0.38 + sob;
         this.boyHead.position.y = 0.60 + sob;
 
@@ -1569,67 +1578,114 @@ class Ecosystem3D {
         this.rightLeg.rotation.x = 0;
         this.wateringCan.rotation.x = 0;
       } 
+      // Happy Dancing Pose (Tree is Pristine)
       else if (this.health >= 0.85) {
-        // Happy Dancing Gesture
         const danceSpeed = 8.0;
         
         // Hop up and down
-        this.boyGroup.position.y = -1.8 + Math.abs(Math.sin(this.time * danceSpeed)) * 0.08;
+        this.boyGroup.position.y = -1.8 + Math.abs(Math.sin(this.time * danceSpeed)) * 0.10;
         
         // Twist body
-        this.boyGroup.rotation.y = Math.sin(this.time * danceSpeed) * 0.25;
+        this.boyGroup.rotation.y = Math.sin(this.time * danceSpeed) * 0.28;
         this.boyGroup.lookAt(0, this.boyGroup.position.y, 0);
-        this.boyGroup.rotation.y += Math.sin(this.time * danceSpeed) * 0.25;
+        this.boyGroup.rotation.y += Math.sin(this.time * danceSpeed) * 0.28;
         
-        // Wave arms high in the air
+        // Wave arms in the air
         this.leftArm.rotation.x = -Math.PI / 1.5;
-        this.leftArm.rotation.z = Math.sin(this.time * danceSpeed) * 0.5 + 0.6;
+        this.leftArm.rotation.z = Math.sin(this.time * danceSpeed) * 0.6 + 0.7;
         this.rightArm.rotation.x = -Math.PI / 1.5;
-        this.rightArm.rotation.z = -Math.sin(this.time * danceSpeed) * 0.5 - 0.6;
+        this.rightArm.rotation.z = -Math.sin(this.time * danceSpeed) * 0.6 - 0.7;
         
-        // Swing legs slightly
-        this.leftLeg.rotation.x = Math.sin(this.time * danceSpeed) * 0.2;
-        this.rightLeg.rotation.x = -Math.sin(this.time * danceSpeed) * 0.2;
+        // Swing legs
+        this.leftLeg.rotation.x = Math.sin(this.time * danceSpeed) * 0.3;
+        this.rightLeg.rotation.x = -Math.sin(this.time * danceSpeed) * 0.3;
         this.wateringCan.rotation.x = 0;
       } 
+      // Worried Breathing Pose (Tree is Stressed/Medium)
       else {
-        // Standard idle posture
+        // Shift head around looking at the stressed tree
+        this.boyHead.rotation.y = Math.sin(this.time * 0.8) * 0.25;
+        this.boyHead.position.y = 0.60 + Math.sin(this.time * 2.5) * 0.007;
+
         this.leftLeg.rotation.x = THREE.MathUtils.lerp(this.leftLeg.rotation.x, 0, 0.1);
         this.rightLeg.rotation.x = THREE.MathUtils.lerp(this.rightLeg.rotation.x, 0, 0.1);
         this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, 0, 0.1);
         this.leftArm.rotation.y = THREE.MathUtils.lerp(this.leftArm.rotation.y, 0, 0.1);
         this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, 0, 0.1);
         this.rightArm.rotation.y = THREE.MathUtils.lerp(this.rightArm.rotation.y, 0, 0.1);
-        this.rightArm.rotation.z = THREE.MathUtils.lerp(this.rightArm.rotation.z, 0, 0.1);
         this.wateringCan.rotation.x = THREE.MathUtils.lerp(this.wateringCan.rotation.x, 0, 0.1);
+      }
+
+      // Autonomous Wandering Trigger (Boy moves by his own based on health state)
+      this.wanderTimer++;
+      if (this.wanderTimer > this.wanderInterval) {
+        this.wanderTimer = 0;
+        this.wanderInterval = 600 + Math.random() * 450; // trigger every 10-18 seconds
+        
+        this.boyState = 'walking_to_tree';
+        if (this.health < 0.35) {
+          this.boyActionType = 'weep'; // goes to weep/comfort
+        } else if (this.health >= 0.85) {
+          this.boyActionType = 'dance_wander'; // goes to dance at tree
+        } else {
+          this.boyActionType = 'inspect'; // goes to inspect base worriedly
+        }
+        this.boyAnimTime = 0;
       }
     } 
     else if (this.boyState === 'walking_to_tree') {
       this.boyAnimTime += 1;
       
-      const duration = 60; // 1 second
+      // Determine walking speed and leg swings based on actions/health
+      let duration = 60;
+      let swingSpeed = 0.25;
+      let swingMultiplier = 1.0;
+      let targetPos = this.boyTargetPos;
+
+      if (this.boyActionType === 'weep') {
+        duration = 110; // extremely slow heavy grieving walk
+        swingSpeed = 0.12;
+        swingMultiplier = 0.4;
+        targetPos = this.boyHugPos;
+      } else if (this.boyActionType === 'inspect') {
+        duration = 85; // cautious slow walk
+        swingSpeed = 0.18;
+        swingMultiplier = 0.7;
+        targetPos = this.boyHugPos;
+      } else if (this.boyActionType === 'dance_wander') {
+        duration = 45; // quick happy skip
+        swingSpeed = 0.32;
+        swingMultiplier = 1.4;
+      } else if (this.boyActionType === 'hug') {
+        duration = 60;
+        targetPos = this.boyHugPos;
+      }
+
       const t = Math.min(1.0, this.boyAnimTime / duration);
-      
-      // Select target position based on action
-      const targetPos = (this.boyActionType === 'hug') ? this.boyHugPos : this.boyTargetPos;
       
       // Interpolate position
       this.boyGroup.position.lerpVectors(this.boyRestPos, targetPos, t);
-      
-      // Face target
       this.boyGroup.lookAt(targetPos.x, -1.8, targetPos.z);
       
-      // Swing limbs
-      const swingSpeed = 0.25;
-      this.leftLeg.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.45;
-      this.rightLeg.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.45;
-      this.leftArm.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.2;
-      this.rightArm.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.2;
+      // Walk swings
+      this.leftLeg.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.45 * swingMultiplier;
+      this.rightLeg.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.45 * swingMultiplier;
+      this.leftArm.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.2 * swingMultiplier;
+      this.rightArm.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.2 * swingMultiplier;
 
       if (t >= 1.0) {
         if (this.boyActionType === 'hug') {
           this.boyState = 'hugging';
           this.setBoySpeech("Thank you! Hugs for the tree! 🤗💚", 2500);
+        } else if (this.boyActionType === 'weep') {
+          this.boyState = 'weeping';
+          this.setBoySpeech("I'm so sorry, tree... 😭 Please reduce carbon!", 3000);
+        } else if (this.boyActionType === 'inspect') {
+          this.boyState = 'inspecting';
+          this.setBoySpeech("Are you doing okay, tree? 😢", 2500);
+        } else if (this.boyActionType === 'dance_wander') {
+          this.boyState = 'dancing_tree';
+          this.setBoySpeech("Woohoo! Thriving tree! 🌳💃", 2500);
         } else {
           this.boyState = 'raising_arm';
           this.setBoySpeech("Thirsty tree? Here is some water! 💧", 2500);
@@ -1640,11 +1696,10 @@ class Ecosystem3D {
     else if (this.boyState === 'hugging') {
       this.boyAnimTime += 1;
       
-      // Keep boy close to trunk
       this.boyGroup.position.copy(this.boyHugPos);
       this.boyGroup.lookAt(0, -1.8, 0);
 
-      // Arm wrap around trunk (hug gesture)
+      // Arm wrap around trunk (hug)
       this.leftArm.rotation.x = -Math.PI / 2.2;
       this.leftArm.rotation.y = Math.PI / 4;
       this.rightArm.rotation.x = -Math.PI / 2.2;
@@ -1653,11 +1708,68 @@ class Ecosystem3D {
       this.leftLeg.rotation.x = 0;
       this.rightLeg.rotation.x = 0;
       
-      // Hugging duration (90 frames)
       if (this.boyAnimTime >= 90) {
-        // Lower arms
         this.leftArm.rotation.y = 0;
         this.rightArm.rotation.y = 0;
+        this.boyState = 'walking_back';
+        this.boyAnimTime = 0;
+        this.setBoySpeech(null);
+      }
+    }
+    else if (this.boyState === 'weeping') {
+      this.boyAnimTime += 1;
+      
+      this.boyGroup.position.copy(this.boyHugPos);
+      this.boyGroup.lookAt(0, -1.8, 0);
+
+      // Sad head down + sob shake
+      this.boyHead.rotation.x = 0.35;
+      this.leftArm.rotation.x = -Math.PI * 0.75 + Math.sin(this.boyAnimTime * 0.4) * 0.04;
+      this.rightArm.rotation.x = -Math.PI * 0.75 + Math.sin(this.boyAnimTime * 0.4) * 0.04;
+      this.leftArm.rotation.y = Math.PI * 0.15;
+      this.rightArm.rotation.y = -Math.PI * 0.15;
+
+      const sob = Math.sin(this.boyAnimTime * 0.4) * 0.01;
+      this.boyTorso.position.y = 0.38 + sob;
+      this.boyHead.position.y = 0.60 + sob;
+
+      if (this.boyAnimTime >= 100) {
+        this.leftArm.rotation.y = 0;
+        this.rightArm.rotation.y = 0;
+        this.boyState = 'walking_back';
+        this.boyAnimTime = 0;
+        this.setBoySpeech(null);
+      }
+    }
+    else if (this.boyState === 'inspecting') {
+      this.boyAnimTime += 1;
+      
+      this.boyGroup.position.copy(this.boyHugPos);
+      this.boyGroup.lookAt(0, -1.8, 0);
+
+      // Lean forward and look up & down tree trunk
+      this.boyHead.rotation.x = Math.sin(this.boyAnimTime * 0.08) * 0.25 - 0.1;
+      this.leftArm.rotation.x = -0.3; // relaxed/thoughtful
+      this.rightArm.rotation.x = -0.3;
+
+      if (this.boyAnimTime >= 100) {
+        this.boyState = 'walking_back';
+        this.boyAnimTime = 0;
+        this.setBoySpeech(null);
+      }
+    }
+    else if (this.boyState === 'dancing_tree') {
+      this.boyAnimTime += 1;
+      
+      this.boyGroup.position.copy(this.boyTargetPos);
+      
+      // Happy spin at tree base
+      this.boyGroup.rotation.y = this.boyAnimTime * 0.15;
+      this.leftArm.rotation.x = -Math.PI / 1.5;
+      this.rightArm.rotation.x = -Math.PI / 1.5;
+      this.boyGroup.position.y = -1.8 + Math.abs(Math.sin(this.boyAnimTime * 0.2)) * 0.08;
+
+      if (this.boyAnimTime >= 80) {
         this.boyState = 'walking_back';
         this.boyAnimTime = 0;
         this.setBoySpeech(null);
@@ -1750,20 +1862,41 @@ class Ecosystem3D {
     else if (this.boyState === 'walking_back') {
       this.boyAnimTime += 1;
       
-      const duration = 60;
+      // Determine walking back speeds based on the actions
+      let duration = 60;
+      let swingSpeed = 0.25;
+      let swingMultiplier = 1.0;
+      let startPos = this.boyTargetPos;
+
+      if (this.boyActionType === 'weep') {
+        duration = 110;
+        swingSpeed = 0.12;
+        swingMultiplier = 0.4;
+        startPos = this.boyHugPos;
+      } else if (this.boyActionType === 'inspect') {
+        duration = 85;
+        swingSpeed = 0.18;
+        swingMultiplier = 0.7;
+        startPos = this.boyHugPos;
+      } else if (this.boyActionType === 'dance_wander') {
+        duration = 45;
+        swingSpeed = 0.32;
+        swingMultiplier = 1.4;
+        startPos = this.boyTargetPos;
+      } else if (this.boyActionType === 'hug') {
+        duration = 60;
+        startPos = this.boyHugPos;
+      }
+
       const t = Math.min(1.0, this.boyAnimTime / duration);
       
-      const startPos = (this.boyActionType === 'hug') ? this.boyHugPos : this.boyTargetPos;
-      
       this.boyGroup.position.lerpVectors(startPos, this.boyRestPos, t);
-      
       this.boyGroup.lookAt(this.boyRestPos.x, -1.8, this.boyRestPos.z);
       
-      const swingSpeed = 0.25;
-      this.leftLeg.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.45;
-      this.rightLeg.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.45;
-      this.leftArm.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.2;
-      this.rightArm.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.2;
+      this.leftLeg.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.45 * swingMultiplier;
+      this.rightLeg.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.45 * swingMultiplier;
+      this.leftArm.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.2 * swingMultiplier;
+      this.rightArm.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.2 * swingMultiplier;
 
       if (t >= 1.0) {
         this.boyState = 'idle';
@@ -1772,5 +1905,4 @@ class Ecosystem3D {
       }
     }
   }
-}
 }
