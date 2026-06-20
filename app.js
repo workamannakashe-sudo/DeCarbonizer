@@ -1494,6 +1494,11 @@ function initMobileTabs() {
       if (targetId === 'ecosystem-panel' && window.ecosystem3D) {
         window.ecosystem3D.onWindowResize();
       }
+
+      // Redraw Google Donut Chart if switching to dashboard panel
+      if (targetId === 'dashboard-panel') {
+        refreshDashboard();
+      }
     });
   });
 }

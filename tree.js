@@ -89,6 +89,8 @@ class Ecosystem3D {
     let previousMousePosition = { x: 0, y: 0 };
     
     const dom = this.renderer.domElement;
+    
+    // Mouse Events
     dom.addEventListener('mousedown', () => { isMouseDown = true; });
     dom.addEventListener('mousemove', (e) => {
       const deltaMove = {
@@ -99,7 +101,6 @@ class Ecosystem3D {
       if (isMouseDown && this.treeGroup) {
         this.treeGroup.rotation.y += deltaMove.x * 0.01;
         this.treeGroup.rotation.x += deltaMove.y * 0.005;
-        // Clamp vertical tilt
         this.treeGroup.rotation.x = Math.max(-0.2, Math.min(0.5, this.treeGroup.rotation.x));
       }
 
@@ -109,6 +110,42 @@ class Ecosystem3D {
       };
     });
     window.addEventListener('mouseup', () => { isMouseDown = false; });
+
+    // Touch Events for Mobile / Tablet support
+    dom.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        isMouseDown = true;
+        const rect = dom.getBoundingClientRect();
+        previousMousePosition = {
+          x: e.touches[0].clientX - rect.left,
+          y: e.touches[0].clientY - rect.top
+        };
+      }
+    });
+
+    dom.addEventListener('touchmove', (e) => {
+      if (isMouseDown && e.touches.length === 1 && this.treeGroup) {
+        const rect = dom.getBoundingClientRect();
+        const currentX = e.touches[0].clientX - rect.left;
+        const currentY = e.touches[0].clientY - rect.top;
+        
+        const deltaMove = {
+          x: currentX - previousMousePosition.x,
+          y: currentY - previousMousePosition.y
+        };
+
+        this.treeGroup.rotation.y += deltaMove.x * 0.012;
+        this.treeGroup.rotation.x += deltaMove.y * 0.006;
+        this.treeGroup.rotation.x = Math.max(-0.2, Math.min(0.5, this.treeGroup.rotation.x));
+
+        previousMousePosition = {
+          x: currentX,
+          y: currentY
+        };
+      }
+    });
+
+    window.addEventListener('touchend', () => { isMouseDown = false; });
   }
 
   createLights() {
