@@ -115,7 +115,7 @@ const onboardingSteps = [
     desc: "Your location helps us compare your footprint to regional averages and set accurate baselines.",
     html: `
       <div class="slider-container">
-        <label class="stat-label">Select Country/Region</label>
+        <label class="stat-label" for="ob-input-location">Select Country/Region</label>
         <select id="ob-input-location" class="input-dropdown">
           <option value="US">United States (Avg: ~16.0 tonnes/yr)</option>
           <option value="UK">United Kingdom (Avg: ~6.5 tonnes/yr)</option>
@@ -124,13 +124,13 @@ const onboardingSteps = [
           <option value="GL" selected>Global Average (Avg: ~4.7 tonnes/yr)</option>
         </select>
         
-        <label class="stat-label" style="margin-top: 15px;">Household Size (people living together)</label>
+        <label class="stat-label" for="ob-input-household" style="margin-top: 15px;">Household Size (people living together)</label>
         <div class="slider-container" style="margin-top: 5px;">
           <div class="slider-val-bubble" id="ob-val-household">1</div>
-          <input type="range" id="ob-input-household" class="custom-slider" min="1" max="8" value="1">
+          <input type="range" id="ob-input-household" class="custom-slider" min="1" max="8" value="1" aria-label="Household size (people)">
         </div>
 
-        <label class="stat-label" style="margin-top: 15px;">Your Nickname</label>
+        <label class="stat-label" for="ob-input-name" style="margin-top: 15px;">Your Nickname</label>
         <input type="text" id="ob-input-name" class="input-dropdown" placeholder="Enter nickname..." value="EcoHero" style="margin-top: 5px; font-size: 0.95rem;">
       </div>
     `,
@@ -159,51 +159,66 @@ const onboardingSteps = [
     title: "How do you commute?",
     desc: "Transportation is a massive source of personal carbon emissions. Select your main transport mode.",
     html: `
-      <div class="card-selector" id="ob-transport-selector">
-        <div class="selection-card" data-val="gas_suv">
-          <span class="card-icon">🚗</span>
+      <div class="card-selector" id="ob-transport-selector" role="radiogroup" aria-label="Select transport mode">
+        <div class="selection-card" data-val="gas_suv" role="radio" aria-checked="false" tabindex="0" aria-label="SUV/Large Gas Car (High emissions)">
+          <span class="card-icon" aria-hidden="true">🚗</span>
           <span class="card-label">SUV/Large Gas Car</span>
           <span class="card-subtext">High emissions</span>
         </div>
-        <div class="selection-card selected" data-val="gas_medium">
-          <span class="card-icon">🚗</span>
+        <div class="selection-card selected" data-val="gas_medium" role="radio" aria-checked="true" tabindex="0" aria-label="Mid/Small Gas Car (Average emissions)">
+          <span class="card-icon" aria-hidden="true">🚗</span>
           <span class="card-label">Mid/Small Gas Car</span>
           <span class="card-subtext">Average emissions</span>
         </div>
-        <div class="selection-card" data-val="hybrid">
-          <span class="card-icon">🔌</span>
+        <div class="selection-card" data-val="hybrid" role="radio" aria-checked="false" tabindex="0" aria-label="Hybrid Vehicle (Moderate emissions)">
+          <span class="card-icon" aria-hidden="true">🔌</span>
           <span class="card-label">Hybrid Vehicle</span>
           <span class="card-subtext">Moderate emissions</span>
         </div>
-        <div class="selection-card" data-val="electric">
-          <span class="card-icon">⚡</span>
+        <div class="selection-card" data-val="electric" role="radio" aria-checked="false" tabindex="0" aria-label="Electric Vehicle (Low emissions)">
+          <span class="card-icon" aria-hidden="true">⚡</span>
           <span class="card-label">Electric Vehicle</span>
           <span class="card-subtext">Low emissions</span>
         </div>
-        <div class="selection-card" data-val="transit">
-          <span class="card-icon">🚌</span>
+        <div class="selection-card" data-val="transit" role="radio" aria-checked="false" tabindex="0" aria-label="Public Transit (Bus, subway, train)">
+          <span class="card-icon" aria-hidden="true">🚌</span>
           <span class="card-label">Public Transit</span>
           <span class="card-subtext">Bus, subway, train</span>
         </div>
-        <div class="selection-card" data-val="walking_cycling">
-          <span class="card-icon">🚲</span>
+        <div class="selection-card" data-val="walking_cycling" role="radio" aria-checked="false" tabindex="0" aria-label="Active Transport (Biking, walking)">
+          <span class="card-icon" aria-hidden="true">🚲</span>
           <span class="card-label">Active Transport</span>
           <span class="card-subtext">Biking, walking</span>
         </div>
       </div>
       <div class="slider-container" style="margin-top: 20px;">
-        <label class="stat-label">Approximate weekly distance: <span id="ob-val-km" style="color:var(--primary); font-weight:700;">50 km</span></label>
-        <input type="range" id="ob-input-km" class="custom-slider" min="0" max="400" value="50" step="10">
+        <label class="stat-label" for="ob-input-km">Approximate weekly distance: <span id="ob-val-km" style="color:var(--primary); font-weight:700;">50 km</span></label>
+        <input type="range" id="ob-input-km" class="custom-slider" min="0" max="400" value="50" step="10" aria-label="Approximate weekly distance in kilometers">
       </div>
     `,
     init: () => {
+      const selector = document.getElementById('ob-transport-selector');
+      const cards = selector.querySelectorAll('.selection-card');
       let selectedVal = 'gas_medium';
-      const cards = document.querySelectorAll('#ob-transport-selector .selection-card');
+      
+      const selectCard = (card) => {
+        cards.forEach(c => {
+          c.classList.remove('selected');
+          c.setAttribute('aria-checked', 'false');
+        });
+        card.classList.add('selected');
+        card.setAttribute('aria-checked', 'true');
+        selectedVal = card.dataset.val;
+      };
+
       cards.forEach(card => {
-        card.addEventListener('click', () => {
-          cards.forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
-          selectedVal = card.dataset.val;
+        card.setAttribute('aria-checked', card.classList.contains('selected') ? 'true' : 'false');
+        card.addEventListener('click', () => selectCard(card));
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            selectCard(card);
+          }
         });
       });
       
@@ -213,8 +228,7 @@ const onboardingSteps = [
         display.textContent = `${e.target.value} km`;
       });
       
-      // Store reference to read selectedVal in save()
-      document.getElementById('ob-transport-selector').dataset.current = selectedVal;
+      selector.dataset.current = selectedVal;
     },
     save: () => {
       const selected = document.querySelector('#ob-transport-selector .selection-card.selected');
@@ -226,37 +240,37 @@ const onboardingSteps = [
     title: "What is your diet style?",
     desc: "Food emissions depend heavily on meat consumption. Select the description that fits you best.",
     html: `
-      <div class="card-selector" id="ob-diet-selector" style="grid-template-columns: 1fr;">
-        <div class="selection-card" data-val="meat_heavy" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
-          <span class="card-icon">🥩</span>
+      <div class="card-selector" id="ob-diet-selector" style="grid-template-columns: 1fr;" role="radiogroup" aria-label="Select diet style">
+        <div class="selection-card" data-val="meat_heavy" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;" role="radio" aria-checked="false" tabindex="0" aria-label="Frequent Meat Eater (beef, pork, or lamb in most daily meals)">
+          <span class="card-icon" aria-hidden="true">🥩</span>
           <div>
             <div class="card-label">Frequent Meat Eater</div>
             <div class="card-subtext">Include beef, pork, or lamb in most daily meals</div>
           </div>
         </div>
-        <div class="selection-card selected" data-val="meat_average" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
-          <span class="card-icon">🍗</span>
+        <div class="selection-card selected" data-val="meat_average" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;" role="radio" aria-checked="true" tabindex="0" aria-label="Average Omnivore (eat meat regularly, poultry/fish)">
+          <span class="card-icon" aria-hidden="true">🍗</span>
           <div>
             <div class="card-label">Average Omnivore</div>
             <div class="card-subtext">Eat meat regularly, but mix with poultry/fish</div>
           </div>
         </div>
-        <div class="selection-card" data-val="flexitarian" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
-          <span class="card-icon">🥗</span>
+        <div class="selection-card" data-val="flexitarian" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;" role="radio" aria-checked="false" tabindex="0" aria-label="Flexitarian (primarily vegetarian, eat meat occasionally)">
+          <span class="card-icon" aria-hidden="true">🥗</span>
           <div>
             <div class="card-label">Flexitarian</div>
             <div class="card-subtext">Primarily vegetarian, eat meat occasionally</div>
           </div>
         </div>
-        <div class="selection-card" data-val="vegetarian" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
-          <span class="card-icon">🧀</span>
+        <div class="selection-card" data-val="vegetarian" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;" role="radio" aria-checked="false" tabindex="0" aria-label="Vegetarian (no meat or fish, eat dairy and eggs)">
+          <span class="card-icon" aria-hidden="true">🧀</span>
           <div>
             <div class="card-label">Vegetarian</div>
             <div class="card-subtext">No meat or fish, eat dairy products & eggs</div>
           </div>
         </div>
-        <div class="selection-card" data-val="vegan" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;">
-          <span class="card-icon">🌱</span>
+        <div class="selection-card" data-val="vegan" style="flex-direction: row; text-align: left; justify-content: flex-start; gap: 15px;" role="radio" aria-checked="false" tabindex="0" aria-label="Vegan (exclusively plant-based)">
+          <span class="card-icon" aria-hidden="true">🌱</span>
           <div>
             <div class="card-label">Vegan</div>
             <div class="card-subtext">Exclusively plant-based diet</div>
@@ -265,11 +279,24 @@ const onboardingSteps = [
       </div>
     `,
     init: () => {
-      const cards = document.querySelectorAll('#ob-diet-selector .selection-card');
+      const selector = document.getElementById('ob-diet-selector');
+      const cards = selector.querySelectorAll('.selection-card');
+      const selectCard = (card) => {
+        cards.forEach(c => {
+          c.classList.remove('selected');
+          c.setAttribute('aria-checked', 'false');
+        });
+        card.classList.add('selected');
+        card.setAttribute('aria-checked', 'true');
+      };
       cards.forEach(card => {
-        card.addEventListener('click', () => {
-          cards.forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
+        card.setAttribute('aria-checked', card.classList.contains('selected') ? 'true' : 'false');
+        card.addEventListener('click', () => selectCard(card));
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            selectCard(card);
+          }
         });
       });
     },
@@ -282,30 +309,43 @@ const onboardingSteps = [
     title: "How is your home powered?",
     desc: "Electricity and heating are primary energy drivers. Select your primary power source.",
     html: `
-      <div class="card-selector" id="ob-energy-selector">
-        <div class="selection-card selected" data-val="grid">
-          <span class="card-icon">🔌</span>
+      <div class="card-selector" id="ob-energy-selector" role="radiogroup" aria-label="Select home power source">
+        <div class="selection-card selected" data-val="grid" role="radio" aria-checked="true" tabindex="0" aria-label="Standard Grid (Fossil-fuel heavy mix)">
+          <span class="card-icon" aria-hidden="true">🔌</span>
           <span class="card-label">Standard Grid</span>
           <span class="card-subtext">Fossil-fuel heavy mix</span>
         </div>
-        <div class="selection-card" data-val="mixed">
-          <span class="card-icon">☀️</span>
+        <div class="selection-card" data-val="mixed" role="radio" aria-checked="false" tabindex="0" aria-label="Mixed Source (Partial solar, wind, offsets)">
+          <span class="card-icon" aria-hidden="true">☀️</span>
           <span class="card-label">Mixed Source</span>
           <span class="card-subtext">Partial solar, wind, or carbon offsets</span>
         </div>
-        <div class="selection-card" data-val="green">
-          <span class="card-icon">🌿</span>
+        <div class="selection-card" data-val="green" role="radio" aria-checked="false" tabindex="0" aria-label="Green/Solar (100% renewable or home solar)">
+          <span class="card-icon" aria-hidden="true">🌿</span>
           <span class="card-label">100% Green / Solar</span>
           <span class="card-subtext">Clean, renewable tariff or home solar</span>
         </div>
       </div>
     `,
     init: () => {
-      const cards = document.querySelectorAll('#ob-energy-selector .selection-card');
+      const selector = document.getElementById('ob-energy-selector');
+      const cards = selector.querySelectorAll('.selection-card');
+      const selectCard = (card) => {
+        cards.forEach(c => {
+          c.classList.remove('selected');
+          c.setAttribute('aria-checked', 'false');
+        });
+        card.classList.add('selected');
+        card.setAttribute('aria-checked', 'true');
+      };
       cards.forEach(card => {
-        card.addEventListener('click', () => {
-          cards.forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
+        card.setAttribute('aria-checked', card.classList.contains('selected') ? 'true' : 'false');
+        card.addEventListener('click', () => selectCard(card));
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            selectCard(card);
+          }
         });
       });
     },
@@ -319,10 +359,10 @@ const onboardingSteps = [
     desc: "Air travel releases high emissions in single bursts. Estimate your monthly flight frequency.",
     html: `
       <div class="slider-container">
-        <label class="stat-label">Average Flights per Month</label>
+        <label class="stat-label" for="ob-input-flights">Average Flights per Month</label>
         <div class="slider-val-bubble" id="ob-val-flights">0</div>
-        <input type="range" id="ob-input-flights" class="custom-slider" min="0" max="6" value="0" step="0.5">
-        <span style="font-size:0.75rem; color:var(--text-muted); text-align:center;">
+        <input type="range" id="ob-input-flights" class="custom-slider" min="0" max="6" value="0" step="0.5" aria-label="Average flights per month">
+        <span style="font-size:0.75rem; color:var(--text-muted); text-align:center;" id="ob-flights-note">
           Note: Short-haul fits as ~0.5 flight, long-haul as 1-2 flights.
         </span>
       </div>
@@ -342,30 +382,43 @@ const onboardingSteps = [
     title: "What are your shopping habits?",
     desc: "Purchasing goods, fast fashion, and appliances has hidden carbon costs from manufacturing and transport.",
     html: `
-      <div class="card-selector" id="ob-shopping-selector">
-        <div class="selection-card" data-val="heavy">
-          <span class="card-icon">🛍️</span>
+      <div class="card-selector" id="ob-shopping-selector" role="radiogroup" aria-label="Select shopping habits">
+        <div class="selection-card" data-val="heavy" role="radio" aria-checked="false" tabindex="0" aria-label="Frequent Buyer (often purchase fashion, tech)">
+          <span class="card-icon" aria-hidden="true">🛍️</span>
           <span class="card-label">Frequent Buyer</span>
           <span class="card-subtext">Often buy new fashion, tech, items</span>
         </div>
-        <div class="selection-card selected" data-val="average">
-          <span class="card-icon">🛒</span>
+        <div class="selection-card selected" data-val="average" role="radio" aria-checked="true" tabindex="0" aria-label="Average Consumer (buy new only when needed)">
+          <span class="card-icon" aria-hidden="true">🛒</span>
           <span class="card-label">Average Consumer</span>
           <span class="card-subtext">Buy new only when needed</span>
         </div>
-        <div class="selection-card" data-val="minimalist">
-          <span class="card-icon">♻️</span>
+        <div class="selection-card" data-val="minimalist" role="radio" aria-checked="false" tabindex="0" aria-label="Thrifter/Minimalist (secondhand items)">
+          <span class="card-icon" aria-hidden="true">♻️</span>
           <span class="card-label">Thrifter / Minimalist</span>
           <span class="card-subtext">Secondhand clothing, minimal purchases</span>
         </div>
       </div>
     `,
     init: () => {
-      const cards = document.querySelectorAll('#ob-shopping-selector .selection-card');
+      const selector = document.getElementById('ob-shopping-selector');
+      const cards = selector.querySelectorAll('.selection-card');
+      const selectCard = (card) => {
+        cards.forEach(c => {
+          c.classList.remove('selected');
+          c.setAttribute('aria-checked', 'false');
+        });
+        card.classList.add('selected');
+        card.setAttribute('aria-checked', 'true');
+      };
       cards.forEach(card => {
-        card.addEventListener('click', () => {
-          cards.forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
+        card.setAttribute('aria-checked', card.classList.contains('selected') ? 'true' : 'false');
+        card.addEventListener('click', () => selectCard(card));
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            selectCard(card);
+          }
         });
       });
     },
@@ -378,7 +431,7 @@ const onboardingSteps = [
     title: "Your Baseline Carbon Profile",
     desc: "Here is your baseline carbon footprint. Adjust your goal to see your potential impact.",
     html: `
-      <div class="stats-grid" style="margin-bottom: 15px;">
+      <div class="stats-grid" style="margin-bottom: 15px;" role="region" aria-label="Baseline stats">
         <div class="stat-card glass-panel" style="padding: 12px;">
           <span class="stat-label">Annual Baseline</span>
           <span class="stat-value" id="ob-val-baseline" style="font-size: 1.4rem;">0 kg</span>
@@ -393,15 +446,14 @@ const onboardingSteps = [
         </div>
       </div>
       <div class="slider-container">
-        <label class="stat-label">Set Reduction Goal: <span id="ob-val-goal" style="color:var(--primary); font-weight:700;">15%</span></label>
-        <input type="range" id="ob-input-goal" class="custom-slider" min="10" max="30" value="15" step="1">
-        <div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-top: 8px;" id="ob-goal-impact-lbl">
+        <label class="stat-label" for="ob-input-goal">Set Reduction Goal: <span id="ob-val-goal" style="color:var(--primary); font-weight:700;">15%</span></label>
+        <input type="range" id="ob-input-goal" class="custom-slider" min="10" max="30" value="15" step="1" aria-label="Reduction goal percentage">
+        <div style="font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-top: 8px;" id="ob-goal-impact-lbl" aria-live="polite">
           Saving ~600 kg CO2e / year. Equivalent to taking 1.5 cars off the road!
         </div>
       </div>
     `,
     init: () => {
-      // Calculate baseline first
       const baseline = calculateBaseline();
       state.profile.baselineAnnual = baseline;
       
@@ -617,10 +669,93 @@ async function persistLogToServer(newLog) {
   }
 }
 
+// Accessible Focus Trap Helper
+function initFocusTrap(overlay, card) {
+  let prevActiveElement = null;
+
+  const getFocusableElements = () => {
+    return Array.from(card.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )).filter(el => !el.hasAttribute('disabled') && el.style.display !== 'none');
+  };
+
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape') {
+      const cancelBtn = overlay.querySelector('.btn-secondary, #guest-cancel-btn, #ob-prev-btn');
+      if (cancelBtn && !cancelBtn.hasAttribute('disabled') && overlay.style.display !== 'none' && !overlay.classList.contains('hidden')) {
+        cancelBtn.click();
+      } else if (overlay.id === 'guest-login-overlay') {
+        overlay.style.display = 'none';
+        if (prevActiveElement) prevActiveElement.focus();
+      }
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      const focusables = getFocusableElements();
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          last.focus();
+          e.preventDefault();
+        }
+      } else {
+        if (document.activeElement === last) {
+          first.focus();
+          e.preventDefault();
+        }
+      }
+    }
+  };
+
+  const observer = new MutationObserver(() => {
+    const isVisible = (overlay.style.display !== 'none' && !overlay.classList.contains('hidden'));
+    if (isVisible) {
+      prevActiveElement = document.activeElement;
+      overlay.addEventListener('keydown', handleKeydown);
+      setTimeout(() => {
+        card.focus();
+        const focusables = getFocusableElements();
+        if (focusables.length > 0) {
+          focusables[0].focus();
+        }
+      }, 50);
+    } else {
+      overlay.removeEventListener('keydown', handleKeydown);
+      if (prevActiveElement) {
+        prevActiveElement.focus();
+        prevActiveElement = null;
+      }
+    }
+  });
+
+  observer.observe(overlay, { attributes: true, attributeFilter: ['style', 'class'] });
+
+  const isVisible = (overlay.style.display !== 'none' && !overlay.classList.contains('hidden'));
+  if (isVisible) {
+    prevActiveElement = document.activeElement;
+    overlay.addEventListener('keydown', handleKeydown);
+    card.focus();
+  }
+}
+
 // Onboarding logic
 function initOnboarding() {
   const nextBtn = document.getElementById('ob-next-btn');
   const prevBtn = document.getElementById('ob-prev-btn');
+  const overlay = document.getElementById('onboarding-overlay');
+  const card = document.getElementById('onboarding-card');
+  
+  if (overlay && card) {
+    initFocusTrap(overlay, card);
+  }
   
   nextBtn.addEventListener('click', () => {
     // Save current step data
@@ -664,8 +799,8 @@ function renderStep(stepIndex) {
   progressText.textContent = `Step ${stepIndex + 1} of ${onboardingSteps.length}`;
   
   container.innerHTML = `
-    <h2 class="ob-step-title">${step.title}</h2>
-    <p class="ob-step-desc">${step.desc}</p>
+    <h2 class="ob-step-title" id="ob-step-title">${step.title}</h2>
+    <p class="ob-step-desc" id="ob-step-desc">${step.desc}</p>
     <div class="ob-question-content">${step.html}</div>
   `;
   
@@ -839,19 +974,32 @@ function renderHabitsList() {
     
     const card = document.createElement('div');
     card.className = `habit-card ${h.checked ? 'checked' : ''}`;
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('role', 'checkbox');
+    card.setAttribute('aria-checked', h.checked ? 'true' : 'false');
+    card.setAttribute('aria-label', `${h.text}, saves ${h.impact} kg CO₂e weekly`);
+    
     card.innerHTML = `
-      <div class="habit-checkbox"></div>
+      <div class="habit-checkbox" aria-hidden="true"></div>
       <span class="habit-text">${h.text}</span>
       <span class="habit-impact">-${h.impact} kg</span>
     `;
     
-    card.addEventListener('click', () => {
+    const toggleHabit = () => {
       h.checked = !h.checked;
       saveState();
       refreshDashboard();
       
       if (h.checked) {
         appendAssistantMessage(`🌱 Awesome choice! By completing: <em>"${h.text}"</em>, you've saved **${h.impact} kg CO₂e** this week!`);
+      }
+    };
+    
+    card.addEventListener('click', toggleHabit);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleHabit();
       }
     });
     
@@ -894,7 +1042,7 @@ function renderHistoryList() {
       
       item.innerHTML = `
         <div class="history-meta">
-          <span class="history-name">${log.description}</span>
+          <span class="history-name">${escapeHtml(log.description)}</span>
           <span class="history-date">${timeStr} • ${log.category}</span>
         </div>
         <span class="history-value-badge" style="background: rgba(255,255,255,0.03); color: ${catColor}; border: 1px solid ${catColor}40;">
@@ -969,12 +1117,21 @@ function initMainApp() {
     if (e.key === 'Enter') handleUserSendMessage();
   });
   
-  // Quick log badge clicks
+  // Quick log badge clicks & keyboard accessibility
   const badges = document.querySelectorAll('.quick-log-badge');
   badges.forEach(badge => {
-    badge.addEventListener('click', () => {
+    badge.setAttribute('tabindex', '0');
+    badge.setAttribute('role', 'button');
+    const triggerLog = () => {
       inputField.value = badge.dataset.log;
       handleUserSendMessage();
+    };
+    badge.addEventListener('click', triggerLog);
+    badge.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        triggerLog();
+      }
     });
   });
 
@@ -1526,11 +1683,14 @@ function initGoogleServices() {
 function initGuestLogin() {
   const guestBtn = document.getElementById('guest-login-btn');
   const overlay = document.getElementById('guest-login-overlay');
+  const card = document.getElementById('guest-login-card');
   const cancelBtn = document.getElementById('guest-cancel-btn');
   const saveBtn = document.getElementById('guest-save-btn');
   const avatarOptions = document.querySelectorAll('#guest-avatar-selector .avatar-option');
   
-  if (!guestBtn || !overlay || !cancelBtn || !saveBtn) return;
+  if (!guestBtn || !overlay || !card || !cancelBtn || !saveBtn) return;
+
+  initFocusTrap(overlay, card);
   
   // 1. Toggle visibility
   guestBtn.addEventListener('click', () => {
@@ -1543,11 +1703,27 @@ function initGuestLogin() {
     overlay.style.display = 'none';
   });
   
-  // 2. Avatar Selection
+  // 2. Avatar Selection & Keyboard Navigation
   avatarOptions.forEach(opt => {
-    opt.addEventListener('click', () => {
-      avatarOptions.forEach(o => o.classList.remove('selected'));
+    opt.setAttribute('role', 'radio');
+    opt.setAttribute('aria-checked', opt.classList.contains('selected') ? 'true' : 'false');
+    opt.setAttribute('tabindex', '0');
+    
+    const selectAvatar = () => {
+      avatarOptions.forEach(o => {
+        o.classList.remove('selected');
+        o.setAttribute('aria-checked', 'false');
+      });
       opt.classList.add('selected');
+      opt.setAttribute('aria-checked', 'true');
+    };
+    
+    opt.addEventListener('click', selectAvatar);
+    opt.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        selectAvatar();
+      }
     });
   });
   

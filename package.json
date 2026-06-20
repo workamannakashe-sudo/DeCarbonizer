@@ -4,7 +4,8 @@
   "description": "Personal Carbon Footprint Tracker & Assistant",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test_decarbonizer.js"
   },
   "engines": {
     "node": ">=18"

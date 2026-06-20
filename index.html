@@ -22,11 +22,11 @@
 <body>
 
   <!-- Onboarding Modal Overlay -->
-  <div id="onboarding-overlay">
-    <div class="onboarding-card glass-panel" id="onboarding-card">
+  <div id="onboarding-overlay" role="presentation">
+    <div class="onboarding-card glass-panel" id="onboarding-card" role="dialog" aria-modal="true" aria-labelledby="ob-step-title" aria-describedby="ob-step-desc" tabindex="-1">
       <div class="ob-header">
         <div class="brand-title">
-          <span class="brand-logo" style="display: inline-flex; align-items: center; justify-content: center;">
+          <span class="brand-logo" style="display: inline-flex; align-items: center; justify-content: center;" aria-hidden="true">
             <svg viewBox="0 0 24 24" style="width:100%; height:100%; fill:none; stroke:var(--text-inverse); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; padding:5px;">
               <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 3.2 1 9a7 7 0 0 1-9 9z"/>
               <path d="M9 22v-6"/>
@@ -438,21 +438,21 @@
   </div>
 
   <!-- Guest Login Modal Overlay -->
-  <div id="guest-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(7, 12, 10, 0.85); backdrop-filter: blur(15px); z-index: 101; justify-content: center; align-items: center;">
-    <div class="onboarding-card glass-panel" style="max-width: 420px; padding: 30px;">
-      <h2 class="ob-step-title" style="font-size: 1.4rem;">Customize Guest Profile</h2>
-      <p class="ob-step-desc" style="font-size: 0.85rem;">Set up a custom local profile to personalize your carbon tracker.</p>
+  <div id="guest-login-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(7, 12, 10, 0.85); backdrop-filter: blur(15px); z-index: 101; justify-content: center; align-items: center;" role="presentation">
+    <div class="onboarding-card glass-panel" id="guest-login-card" role="dialog" aria-modal="true" aria-labelledby="guest-title" aria-describedby="guest-desc" tabindex="-1" style="max-width: 420px; padding: 30px;">
+      <h2 class="ob-step-title" id="guest-title" style="font-size: 1.4rem;">Customize Guest Profile</h2>
+      <p class="ob-step-desc" id="guest-desc" style="font-size: 0.85rem;">Set up a custom local profile to personalize your carbon tracker.</p>
       
       <div class="slider-container" style="margin-top: 10px;">
-        <label class="stat-label">Choose Nickname</label>
+        <label class="stat-label" for="guest-input-name">Choose Nickname</label>
         <input type="text" id="guest-input-name" class="input-dropdown" placeholder="Enter nickname..." value="EcoHero" style="font-size: 0.95rem;">
         
-        <label class="stat-label" style="margin-top: 15px;">Choose Avatar</label>
-        <div style="display: flex; justify-content: space-around; font-size: 2rem; margin-top: 5px;" id="guest-avatar-selector">
-          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option selected" data-emoji="🌳">🌳</span>
-          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" data-emoji="⚡">⚡</span>
-          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" data-emoji="🚲">🚲</span>
-          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" data-emoji="🥗">🥗</span>
+        <label class="stat-label" id="guest-avatar-label" style="margin-top: 15px;">Choose Avatar</label>
+        <div style="display: flex; justify-content: space-around; font-size: 2rem; margin-top: 5px;" id="guest-avatar-selector" role="radiogroup" aria-labelledby="guest-avatar-label">
+          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option selected" role="radio" aria-checked="true" tabindex="0" data-emoji="🌳" aria-label="Tree Avatar">🌳</span>
+          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" role="radio" aria-checked="false" tabindex="0" data-emoji="⚡" aria-label="Energy Avatar">⚡</span>
+          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" role="radio" aria-checked="false" tabindex="0" data-emoji="🚲" aria-label="Bike Avatar">🚲</span>
+          <span style="cursor: pointer; padding: 6px; border-radius: 8px; border: 2px solid transparent;" class="avatar-option" role="radio" aria-checked="false" tabindex="0" data-emoji="🥗" aria-label="Salad Avatar">🥗</span>
         </div>
       </div>
       

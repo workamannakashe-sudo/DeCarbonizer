@@ -24,6 +24,24 @@ class Ecosystem3D {
     this.isCleansing = false;
     this.cleanseRadius = 0;
 
+    // Reusable objects for animation performance (GC prevention)
+    this.tempColor = new THREE.Color();
+    this.tempColor2 = new THREE.Color();
+    this.tempVector = new THREE.Vector3();
+    this.tempVector2 = new THREE.Vector3();
+
+    // Environment colors cached to prevent GC stutters
+    this.healthyGrass = new THREE.Color('#2e5a44');
+    this.stressedGrass = new THREE.Color('#656d4a');
+    this.deadGrass = new THREE.Color('#1c1917');
+    this.healthySoil = new THREE.Color('#4e3629');
+    this.stressedSoil = new THREE.Color('#582f0e');
+    this.deadSoil = new THREE.Color('#120a06');
+    this.targetGrass = new THREE.Color();
+    this.targetSoil = new THREE.Color();
+    this.healthyAmbient = new THREE.Color('#d4f3e6');
+    this.deadAmbient = new THREE.Color('#180c1e');
+
     this.initThree();
     this.createLights();
     this.createGround();
@@ -743,7 +761,6 @@ class Ecosystem3D {
     if (leavesValEl) leavesValEl.textContent = this.activeLeafCount;
 
     // Leaves update loop
-    let targetColor = new THREE.Color();
     const timeFactor = this.time;
 
     this.leaves.forEach((l, idx) => {
@@ -754,23 +771,23 @@ class Ecosystem3D {
       if (localHealth >= 0.75) {
         // Flourishing Emerald
         const t = (localHealth - 0.75) / 0.25;
-        targetColor.set('#10b981').lerp(new THREE.Color('#34d399'), t * leafNoise);
+        this.tempColor.set('#10b981').lerp(this.tempColor2.set('#34d399'), t * leafNoise);
       } else if (localHealth >= 0.45) {
         // Autumn Stressed Yellowish
         const t = (localHealth - 0.45) / 0.3;
-        targetColor.set('#a3e635').lerp(new THREE.Color('#fbbf24'), (1.0 - t));
+        this.tempColor.set('#a3e635').lerp(this.tempColor2.set('#fbbf24'), (1.0 - t));
       } else if (localHealth >= 0.2) {
         // Rust Orange
         const t = (localHealth - 0.2) / 0.25;
-        targetColor.set('#f97316').lerp(new THREE.Color('#783c1d'), (1.0 - t));
+        this.tempColor.set('#f97316').lerp(this.tempColor2.set('#783c1d'), (1.0 - t));
       } else {
         // Dead Charcoal Grey
         const t = localHealth / 0.2;
-        targetColor.set('#783c1d').lerp(new THREE.Color('#27272a'), (1.0 - t));
+        this.tempColor.set('#783c1d').lerp(this.tempColor2.set('#27272a'), (1.0 - t));
       }
 
       // Smooth color transition
-      l.mesh.material.color.lerp(targetColor, 0.05);
+      l.mesh.material.color.lerp(this.tempColor, 0.05);
 
       // Handle leaf physics if detached (falling)
       if (l.isDetached) {
@@ -794,63 +811,52 @@ class Ecosystem3D {
 
           // Fade out and shrink after resting on soil
           if (l.restingTime > 90) {
-            l.mesh.scale.lerp(new THREE.Vector3(0, 0, 0), 0.08);
+            this.tempVector.set(0, 0, 0);
+            l.mesh.scale.lerp(this.tempVector, 0.08);
           }
         }
       } else {
         // If attached, scale back to original size (regrow)
-        const scaleTarget = new THREE.Vector3(l.originalScale, l.originalScale, l.originalScale);
-        l.mesh.scale.lerp(scaleTarget, 0.04);
+        this.tempVector.set(l.originalScale, l.originalScale, l.originalScale);
+        l.mesh.scale.lerp(this.tempVector, 0.04);
         
         // Sway attached leaves slightly in the wind
         const leafSwayX = Math.sin(timeFactor * 1.8 + idx) * 0.04;
         const leafSwayY = Math.cos(timeFactor * 1.4 + idx) * 0.04;
-        l.mesh.position.copy(l.originalPosition).add(new THREE.Vector3(leafSwayX, leafSwayY, 0));
+        this.tempVector.set(leafSwayX, leafSwayY, 0);
+        l.mesh.position.copy(l.originalPosition).add(this.tempVector);
       }
     });
   }
 
   updateEnvironmentColors() {
-    const healthyGrass = new THREE.Color('#2e5a44');
-    const stressedGrass = new THREE.Color('#656d4a');
-    const deadGrass = new THREE.Color('#1c1917');
-
-    const healthySoil = new THREE.Color('#4e3629');
-    const stressedSoil = new THREE.Color('#582f0e');
-    const deadSoil = new THREE.Color('#120a06');
-
-    const targetGrass = new THREE.Color();
-    const targetSoil = new THREE.Color();
-
     if (this.health >= 0.5) {
       const t = (this.health - 0.5) / 0.5;
-      targetGrass.copy(stressedGrass).lerp(healthyGrass, t);
-      targetSoil.copy(stressedSoil).lerp(healthySoil, t);
+      this.targetGrass.copy(this.stressedGrass).lerp(this.healthyGrass, t);
+      this.targetSoil.copy(this.stressedSoil).lerp(this.healthySoil, t);
       // Bright spotlight
       if (this.glowLight) {
-        this.glowLight.color.set('#10b981').lerp(new THREE.Color('#fbbf24'), 1.0 - t);
+        this.glowLight.color.set('#10b981').lerp(this.tempColor.set('#fbbf24'), 1.0 - t);
         this.glowLight.intensity = 1.0 + t * 0.5;
       }
     } else {
       const t = this.health / 0.5;
-      targetGrass.copy(deadGrass).lerp(stressedGrass, t);
-      targetSoil.copy(deadSoil).lerp(stressedSoil, t);
+      this.targetGrass.copy(this.deadGrass).lerp(this.stressedGrass, t);
+      this.targetSoil.copy(this.deadSoil).lerp(this.stressedSoil, t);
       // Toxic spotlight glow
       if (this.glowLight) {
-        this.glowLight.color.set('#b45309').lerp(new THREE.Color('#fbbf24'), t);
+        this.glowLight.color.set('#b45309').lerp(this.tempColor.set('#fbbf24'), t);
         this.glowLight.intensity = 0.3 + t * 0.7;
       }
     }
 
-    this.grassMaterial.color.lerp(targetGrass, 0.04);
-    this.soilMaterial.color.lerp(targetSoil, 0.04);
+    this.grassMaterial.color.lerp(this.targetGrass, 0.04);
+    this.soilMaterial.color.lerp(this.targetSoil, 0.04);
 
     // Fade ambient light according to health
     if (this.ambientLight) {
-      const healthyAmbient = new THREE.Color('#d4f3e6');
-      const deadAmbient = new THREE.Color('#180c1e'); // gloomy violet
-      const targetAmbient = deadAmbient.clone().lerp(healthyAmbient, this.health);
-      this.ambientLight.color.lerp(targetAmbient, 0.04);
+      this.tempColor.copy(this.deadAmbient).lerp(this.healthyAmbient, this.health);
+      this.ambientLight.color.lerp(this.tempColor, 0.04);
     }
   }
 
@@ -1264,22 +1270,21 @@ class Ecosystem3D {
       }
     }
 
-    let targetColor = new THREE.Color();
     const timeFactor = this.time;
 
     this.fruits.forEach((f, idx) => {
       // Color shifts: Red (healthy) -> Yellow (stressed) -> Brown (decayed) -> Dark (dead)
       if (this.health >= 0.70) {
-        targetColor.set('#ef4444'); // Healthy Apple Red
+        this.tempColor.set('#ef4444'); // Healthy Apple Red
       } else if (this.health >= 0.40) {
-        targetColor.set('#eab308'); // Ripe Yellow
+        this.tempColor.set('#eab308'); // Ripe Yellow
       } else if (this.health >= 0.15) {
-        targetColor.set('#78350f'); // Rotting Brown
+        this.tempColor.set('#78350f'); // Rotting Brown
       } else {
-        targetColor.set('#18181b'); // Rotting Black
+        this.tempColor.set('#18181b'); // Rotting Black
       }
 
-      f.mesh.material.color.lerp(targetColor, 0.05);
+      f.mesh.material.color.lerp(this.tempColor, 0.05);
 
       if (f.isDetached) {
         // Fall down with gravity
@@ -1297,18 +1302,20 @@ class Ecosystem3D {
 
           // Fade out and shrink
           if (f.restingTime > 60) {
-            f.mesh.scale.lerp(new THREE.Vector3(0, 0, 0), 0.08);
+            this.tempVector.set(0, 0, 0);
+            f.mesh.scale.lerp(this.tempVector, 0.08);
           }
         }
       } else {
         // Scale up (regrow)
-        const scaleTarget = new THREE.Vector3(f.originalScale, f.originalScale, f.originalScale);
-        f.mesh.scale.lerp(scaleTarget, 0.04);
+        this.tempVector.set(f.originalScale, f.originalScale, f.originalScale);
+        f.mesh.scale.lerp(this.tempVector, 0.04);
         
         // Sway slightly
         const fruitSwayX = Math.sin(timeFactor * 1.5 + idx) * 0.015;
         const fruitSwayY = Math.cos(timeFactor * 1.1 + idx) * 0.015;
-        f.mesh.position.copy(f.originalPosition).add(new THREE.Vector3(fruitSwayX, fruitSwayY, 0));
+        this.tempVector.set(fruitSwayX, fruitSwayY, 0);
+        f.mesh.position.copy(f.originalPosition).add(this.tempVector);
       }
     });
   }
@@ -1470,7 +1477,7 @@ class Ecosystem3D {
   updateSpeechBubblePosition() {
     if (!this.speechBubble || this.speechBubble.style.display === 'none') return;
     
-    const pos = new THREE.Vector3();
+    const pos = this.tempVector;
     this.boyGroup.getWorldPosition(pos);
     
     // Project above head
@@ -1807,7 +1814,7 @@ class Ecosystem3D {
 
       // Spawning water particles from spout
       const positions = this.water.geometry.attributes.position.array;
-      const spoutPos = new THREE.Vector3();
+      const spoutPos = this.tempVector2;
       if (this.boySpout) {
         this.boySpout.getWorldPosition(spoutPos);
       } else {

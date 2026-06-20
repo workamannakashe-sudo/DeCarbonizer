@@ -1732,3 +1732,29 @@ body {
   }
 }
 
+/* Accessibility Focus Indicators and Keyboard Navigation Helpers */
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.4) !important;
+}
+
+.habit-card:focus-visible,
+.quick-log-badge:focus-visible,
+.avatar-option:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Screen reader only utility class for invisible descriptive text */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
