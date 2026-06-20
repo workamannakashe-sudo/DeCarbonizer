@@ -531,10 +531,12 @@ class Ecosystem3D {
 
   waterTree() {
     if (this.boyState === 'idle') {
+      this.boyActionType = 'water';
       this.boyState = 'walking_to_tree';
       this.boyAnimTime = 0;
     }
   }
+
 
 
   cleanseAir() {
@@ -571,11 +573,13 @@ class Ecosystem3D {
     // Check if footprint has reduced
     if (this.lastCo2 !== undefined && co2Val < this.lastCo2) {
       if (this.boyState === 'idle') {
+        this.boyActionType = 'hug';
         this.boyState = 'walking_to_tree';
         this.boyAnimTime = 0;
       }
     }
     this.lastCo2 = co2Val;
+
 
 
     // Update UI Badges
@@ -690,6 +694,8 @@ class Ecosystem3D {
 
     // 8b. Animate Caretaker Boy
     this.animateBoy();
+    this.updateSpeechBubblePosition();
+    this.updateSpeechState();
 
     // Smoothly interpolate weather transitions (lights & precipitations)
     this.interpolateWeatherTransitions();
@@ -1314,10 +1320,22 @@ class Ecosystem3D {
     this.scene.add(this.boyGroup);
 
     // State machine variables
-    this.boyState = 'idle'; // 'idle', 'walking_to_tree', 'raising_arm', 'watering', 'lowering_arm', 'walking_back'
+    this.boyState = 'idle'; // 'idle', 'walking_to_tree', 'raising_arm', 'watering', 'lowering_arm', 'walking_back', 'hugging'
+    this.boyActionType = 'water'; // 'water' or 'hug'
     this.boyAnimTime = 0;
     this.boyTargetPos = new THREE.Vector3(0.4, -1.8, 0.4);
+    this.boyHugPos = new THREE.Vector3(0.18, -1.8, 0.18); // closer for hugging
     this.boyRestPos = new THREE.Vector3(1.1, -1.8, 0.7);
+    this.speechTimer = 0;
+    this.speechBubbleText = '';
+
+    // Create or reuse HTML speech bubble overlay
+    this.speechBubble = document.getElementById('boy-speech-bubble');
+    if (!this.speechBubble) {
+      this.speechBubble = document.createElement('div');
+      this.speechBubble.id = 'boy-speech-bubble';
+      this.container.appendChild(this.speechBubble);
+    }
 
     // Materials
     const shirtMaterial = new THREE.MeshStandardMaterial({
@@ -1343,25 +1361,25 @@ class Ecosystem3D {
 
     // 1. Torso
     const torsoGeom = new THREE.BoxGeometry(0.15, 0.28, 0.12);
-    const torso = new THREE.Mesh(torsoGeom, shirtMaterial);
-    torso.position.set(0, 0.38, 0);
-    torso.castShadow = true;
-    torso.receiveShadow = true;
-    this.boyGroup.add(torso);
+    this.boyTorso = new THREE.Mesh(torsoGeom, shirtMaterial);
+    this.boyTorso.position.set(0, 0.38, 0);
+    this.boyTorso.castShadow = true;
+    this.boyTorso.receiveShadow = true;
+    this.boyGroup.add(this.boyTorso);
 
     // 2. Head
     const headGeom = new THREE.SphereGeometry(0.075, 8, 8);
-    const head = new THREE.Mesh(headGeom, skinMaterial);
-    head.position.set(0, 0.60, 0);
-    head.castShadow = true;
-    this.boyGroup.add(head);
+    this.boyHead = new THREE.Mesh(headGeom, skinMaterial);
+    this.boyHead.position.set(0, 0.60, 0);
+    this.boyHead.castShadow = true;
+    this.boyGroup.add(this.boyHead);
 
     // 3. Hair
     const hairGeom = new THREE.BoxGeometry(0.16, 0.05, 0.16);
-    const hair = new THREE.Mesh(hairGeom, hairMaterial);
-    hair.position.set(0, 0.65, -0.015);
-    hair.castShadow = true;
-    this.boyGroup.add(hair);
+    this.boyHair = new THREE.Mesh(hairGeom, hairMaterial);
+    this.boyHair.position.set(0, 0.65, -0.015);
+    this.boyHair.castShadow = true;
+    this.boyGroup.add(this.boyHair);
 
     // 4. Left Leg
     const legGeom = new THREE.CylinderGeometry(0.024, 0.02, 0.24, 6);
@@ -1423,24 +1441,168 @@ class Ecosystem3D {
     this.rightArm.add(this.wateringCan);
   }
 
+  setBoySpeech(text, duration = 0) {
+    if (!this.speechBubble) return;
+    if (!text) {
+      this.speechBubble.style.display = 'none';
+      this.speechBubbleText = '';
+      return;
+    }
+    
+    this.speechBubble.innerHTML = text;
+    this.speechBubble.style.display = 'block';
+    this.speechBubbleText = text;
+    
+    if (this.speechTimeout) {
+      clearTimeout(this.speechTimeout);
+    }
+    
+    if (duration > 0) {
+      this.speechTimeout = setTimeout(() => {
+        this.speechBubble.style.display = 'none';
+        this.speechBubbleText = '';
+      }, duration);
+    }
+  }
+
+  updateSpeechBubblePosition() {
+    if (!this.speechBubble || this.speechBubble.style.display === 'none') return;
+    
+    const pos = new THREE.Vector3();
+    this.boyGroup.getWorldPosition(pos);
+    
+    // Project above head
+    pos.y += 0.85;
+    pos.project(this.camera);
+    
+    // If behind camera, hide
+    if (pos.z > 1) {
+      this.speechBubble.style.opacity = 0;
+      return;
+    }
+    
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight || 350;
+    
+    const x = (pos.x * 0.5 + 0.5) * width;
+    const y = (pos.y * -0.5 + 0.5) * height;
+    
+    this.speechBubble.style.left = `${x}px`;
+    this.speechBubble.style.top = `${y}px`;
+    this.speechBubble.style.opacity = 1;
+  }
+
+  updateSpeechState() {
+    if (this.boyState !== 'idle') return;
+    
+    this.speechTimer = (this.speechTimer || 0) + 1;
+    
+    if (this.health < 0.35) {
+      if (this.speechTimer > 250 || !this.speechBubbleText) {
+        this.speechTimer = 0;
+        const sadRemarks = [
+          "Oh no... you killed the tree! 😭",
+          "It's too polluted! 😢",
+          "Please reduce carbon emissions! 💔",
+          "I can't breathe in this smog! 🥵"
+        ];
+        this.setBoySpeech(sadRemarks[Math.floor(Math.random() * sadRemarks.length)]);
+      }
+    } else if (this.health >= 0.85) {
+      if (this.speechTimer > 350 || !this.speechBubbleText) {
+        this.speechTimer = 0;
+        const happyRemarks = [
+          "The tree is so happy! 🌳✨",
+          "I love clean energy! 💚",
+          "Dancing for a green planet! 💃",
+          "This ecosystem is pristine! 🌍"
+        ];
+        this.setBoySpeech(happyRemarks[Math.floor(Math.random() * happyRemarks.length)]);
+      }
+    } else {
+      // Neutral
+      if (this.speechTimer > 500) {
+        this.speechTimer = 0;
+        const neutralRemarks = [
+          "Doing great! Let's keep it green! 👍",
+          "Every carbon reduction helps! 🌱",
+          "Let's protect this ecosystem! 💚"
+        ];
+        this.setBoySpeech(neutralRemarks[Math.floor(Math.random() * neutralRemarks.length)], 3500);
+      } else if (!this.speechBubbleText) {
+        this.setBoySpeech(null);
+      }
+    }
+  }
+
   animateBoy() {
     if (!this.boyGroup) return;
 
-    // Check states
-    if (this.boyState === 'idle') {
-      // Stand still and face the tree trunk
-      this.boyGroup.position.copy(this.boyRestPos);
-      
-      // Face the trunk (0, -1.8, 0)
-      this.boyGroup.lookAt(0, -1.8, 0);
+    // Reset base posture values
+    this.boyTorso.position.y = 0.38;
+    this.boyHead.position.set(0, 0.60, 0);
+    this.boyHead.rotation.set(0, 0, 0);
+    this.boyGroup.rotation.y = 0;
 
-      // Lerp limbs back to straight positions
-      this.leftLeg.rotation.x = THREE.MathUtils.lerp(this.leftLeg.rotation.x, 0, 0.1);
-      this.rightLeg.rotation.x = THREE.MathUtils.lerp(this.rightLeg.rotation.x, 0, 0.1);
-      this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, 0, 0.1);
-      this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, 0, 0.1);
-      this.rightArm.rotation.z = THREE.MathUtils.lerp(this.rightArm.rotation.z, 0, 0.1);
-      this.wateringCan.rotation.x = THREE.MathUtils.lerp(this.wateringCan.rotation.x, 0, 0.1);
+    // State machine
+    if (this.boyState === 'idle') {
+      // Stand still at resting position
+      this.boyGroup.position.copy(this.boyRestPos);
+      this.boyGroup.lookAt(0, -1.8, 0); // Face the tree
+
+      if (this.health < 0.35) {
+        // Crying / Sobbing Gesture
+        this.boyHead.rotation.x = 0.35; // head hung low
+        
+        // Bring hands to face (sobbing)
+        this.leftArm.rotation.x = -Math.PI * 0.75;
+        this.leftArm.rotation.y = Math.PI * 0.15;
+        this.rightArm.rotation.x = -Math.PI * 0.75;
+        this.rightArm.rotation.y = -Math.PI * 0.15;
+
+        // Sobbing body vibration
+        const sob = Math.sin(this.time * 12) * 0.015;
+        this.boyTorso.position.y = 0.38 + sob;
+        this.boyHead.position.y = 0.60 + sob;
+
+        this.leftLeg.rotation.x = 0;
+        this.rightLeg.rotation.x = 0;
+        this.wateringCan.rotation.x = 0;
+      } 
+      else if (this.health >= 0.85) {
+        // Happy Dancing Gesture
+        const danceSpeed = 8.0;
+        
+        // Hop up and down
+        this.boyGroup.position.y = -1.8 + Math.abs(Math.sin(this.time * danceSpeed)) * 0.08;
+        
+        // Twist body
+        this.boyGroup.rotation.y = Math.sin(this.time * danceSpeed) * 0.25;
+        this.boyGroup.lookAt(0, this.boyGroup.position.y, 0);
+        this.boyGroup.rotation.y += Math.sin(this.time * danceSpeed) * 0.25;
+        
+        // Wave arms high in the air
+        this.leftArm.rotation.x = -Math.PI / 1.5;
+        this.leftArm.rotation.z = Math.sin(this.time * danceSpeed) * 0.5 + 0.6;
+        this.rightArm.rotation.x = -Math.PI / 1.5;
+        this.rightArm.rotation.z = -Math.sin(this.time * danceSpeed) * 0.5 - 0.6;
+        
+        // Swing legs slightly
+        this.leftLeg.rotation.x = Math.sin(this.time * danceSpeed) * 0.2;
+        this.rightLeg.rotation.x = -Math.sin(this.time * danceSpeed) * 0.2;
+        this.wateringCan.rotation.x = 0;
+      } 
+      else {
+        // Standard idle posture
+        this.leftLeg.rotation.x = THREE.MathUtils.lerp(this.leftLeg.rotation.x, 0, 0.1);
+        this.rightLeg.rotation.x = THREE.MathUtils.lerp(this.rightLeg.rotation.x, 0, 0.1);
+        this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, 0, 0.1);
+        this.leftArm.rotation.y = THREE.MathUtils.lerp(this.leftArm.rotation.y, 0, 0.1);
+        this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, 0, 0.1);
+        this.rightArm.rotation.y = THREE.MathUtils.lerp(this.rightArm.rotation.y, 0, 0.1);
+        this.rightArm.rotation.z = THREE.MathUtils.lerp(this.rightArm.rotation.z, 0, 0.1);
+        this.wateringCan.rotation.x = THREE.MathUtils.lerp(this.wateringCan.rotation.x, 0, 0.1);
+      }
     } 
     else if (this.boyState === 'walking_to_tree') {
       this.boyAnimTime += 1;
@@ -1448,61 +1610,86 @@ class Ecosystem3D {
       const duration = 60; // 1 second
       const t = Math.min(1.0, this.boyAnimTime / duration);
       
-      // Smoothly interpolate position
-      this.boyGroup.position.lerpVectors(this.boyRestPos, this.boyTargetPos, t);
+      // Select target position based on action
+      const targetPos = (this.boyActionType === 'hug') ? this.boyHugPos : this.boyTargetPos;
       
-      // Face the target (walking direction)
-      this.boyGroup.lookAt(this.boyTargetPos.x, -1.8, this.boyTargetPos.z);
+      // Interpolate position
+      this.boyGroup.position.lerpVectors(this.boyRestPos, targetPos, t);
       
-      // Swing legs
+      // Face target
+      this.boyGroup.lookAt(targetPos.x, -1.8, targetPos.z);
+      
+      // Swing limbs
       const swingSpeed = 0.25;
       this.leftLeg.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.45;
       this.rightLeg.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.45;
-      
-      // Swing arms slightly opposite of legs
       this.leftArm.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.2;
       this.rightArm.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.2;
 
       if (t >= 1.0) {
-        this.boyState = 'raising_arm';
+        if (this.boyActionType === 'hug') {
+          this.boyState = 'hugging';
+          this.setBoySpeech("Thank you! Hugs for the tree! 🤗💚", 2500);
+        } else {
+          this.boyState = 'raising_arm';
+          this.setBoySpeech("Thirsty tree? Here is some water! 💧", 2500);
+        }
         this.boyAnimTime = 0;
       }
     } 
+    else if (this.boyState === 'hugging') {
+      this.boyAnimTime += 1;
+      
+      // Keep boy close to trunk
+      this.boyGroup.position.copy(this.boyHugPos);
+      this.boyGroup.lookAt(0, -1.8, 0);
+
+      // Arm wrap around trunk (hug gesture)
+      this.leftArm.rotation.x = -Math.PI / 2.2;
+      this.leftArm.rotation.y = Math.PI / 4;
+      this.rightArm.rotation.x = -Math.PI / 2.2;
+      this.rightArm.rotation.y = -Math.PI / 4;
+
+      this.leftLeg.rotation.x = 0;
+      this.rightLeg.rotation.x = 0;
+      
+      // Hugging duration (90 frames)
+      if (this.boyAnimTime >= 90) {
+        // Lower arms
+        this.leftArm.rotation.y = 0;
+        this.rightArm.rotation.y = 0;
+        this.boyState = 'walking_back';
+        this.boyAnimTime = 0;
+        this.setBoySpeech(null);
+      }
+    }
     else if (this.boyState === 'raising_arm') {
       this.boyAnimTime += 1;
       
-      // Face the tree trunk
       this.boyGroup.lookAt(0, -1.8, 0);
 
-      // Lerp legs back to straight positions
       this.leftLeg.rotation.x = THREE.MathUtils.lerp(this.leftLeg.rotation.x, 0, 0.1);
       this.rightLeg.rotation.x = THREE.MathUtils.lerp(this.rightLeg.rotation.x, 0, 0.1);
       this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, 0, 0.1);
 
-      // Raise right arm forward and up
-      const duration = 20; // 0.33s
+      const duration = 20;
       const t = Math.min(1.0, this.boyAnimTime / duration);
       
       this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, -Math.PI / 2.2, 0.1);
-      // Tilt can forward slightly
       this.wateringCan.rotation.x = THREE.MathUtils.lerp(this.wateringCan.rotation.x, -Math.PI / 4, 0.1);
 
       if (t >= 1.0) {
         this.boyState = 'watering';
         this.boyAnimTime = 0;
-        
-        // Spawn active watering
         this.isWatering = true;
-        this.waterLifetime = 90; // Water for 1.5s
+        this.waterLifetime = 90;
       }
     } 
     else if (this.boyState === 'watering') {
       this.boyAnimTime += 1;
       
-      // Face the tree trunk
       this.boyGroup.lookAt(0, -1.8, 0);
 
-      // Keep arm raised and can tilted
       this.rightArm.rotation.x = -Math.PI / 2.2;
       this.wateringCan.rotation.x = -Math.PI / 4;
 
@@ -1515,7 +1702,6 @@ class Ecosystem3D {
         spoutPos.set(0.35, -1.3, 0.35);
       }
       
-      // Emit 3 drops per frame
       let emitted = 0;
       for (let i = 0; i < this.waterData.length; i++) {
         if (positions[i * 3 + 1] === -99) {
@@ -1523,7 +1709,6 @@ class Ecosystem3D {
           positions[i * 3 + 1] = spoutPos.y + (Math.random() - 0.5) * 0.02;
           positions[i * 3 + 2] = spoutPos.z + (Math.random() - 0.5) * 0.02;
           
-          // Vector towards trunk: (0 - spoutPos.x, -0.4, 0 - spoutPos.z)
           const dirX = -spoutPos.x;
           const dirZ = -spoutPos.z;
           const len = Math.sqrt(dirX * dirX + dirZ * dirZ) || 1;
@@ -1540,22 +1725,20 @@ class Ecosystem3D {
       }
       this.water.geometry.attributes.position.needsUpdate = true;
 
-      // If animation time reaches 90, stop watering and lower arm
       if (this.boyAnimTime >= 90) {
         this.boyState = 'lowering_arm';
         this.boyAnimTime = 0;
+        this.setBoySpeech(null);
       }
     } 
     else if (this.boyState === 'lowering_arm') {
       this.boyAnimTime += 1;
       
-      // Face the trunk
       this.boyGroup.lookAt(0, -1.8, 0);
 
       const duration = 20;
       const t = Math.min(1.0, this.boyAnimTime / duration);
       
-      // Lower right arm and can
       this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, 0, 0.1);
       this.wateringCan.rotation.x = THREE.MathUtils.lerp(this.wateringCan.rotation.x, 0, 0.1);
 
@@ -1570,25 +1753,24 @@ class Ecosystem3D {
       const duration = 60;
       const t = Math.min(1.0, this.boyAnimTime / duration);
       
-      // Smoothly interpolate position back
-      this.boyGroup.position.lerpVectors(this.boyTargetPos, this.boyRestPos, t);
+      const startPos = (this.boyActionType === 'hug') ? this.boyHugPos : this.boyTargetPos;
       
-      // Face the rest position
+      this.boyGroup.position.lerpVectors(startPos, this.boyRestPos, t);
+      
       this.boyGroup.lookAt(this.boyRestPos.x, -1.8, this.boyRestPos.z);
       
-      // Swing legs
       const swingSpeed = 0.25;
       this.leftLeg.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.45;
       this.rightLeg.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.45;
-      
-      // Swing arms slightly
       this.leftArm.rotation.x = -Math.sin(this.boyAnimTime * swingSpeed) * 0.2;
       this.rightArm.rotation.x = Math.sin(this.boyAnimTime * swingSpeed) * 0.2;
 
       if (t >= 1.0) {
         this.boyState = 'idle';
         this.boyAnimTime = 0;
+        this.boyActionType = 'water'; // reset
       }
     }
   }
+}
 }
