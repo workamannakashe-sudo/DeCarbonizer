@@ -20,6 +20,8 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
+  <!-- Skip Navigation Link (Accessibility) -->
+  <a href="#chat-input-field" class="skip-link">Skip to carbon assistant</a>
 
   <!-- Onboarding Modal Overlay -->
   <div id="onboarding-overlay" role="presentation">
@@ -125,9 +127,9 @@
           <span id="progress-percentage-text">0% of Sustainable Budget</span>
         </div>
         <div class="progress-bar-container">
-          <div class="progress-fill" id="weekly-budget-progress"></div>
+          <div class="progress-fill" id="weekly-budget-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="Weekly carbon budget: 0% used"></div>
           <!-- Marker at the 2-tonne sustainable weekly limit: 2000kg / 52 weeks = 38.46 kg per week -->
-          <div class="target-marker" id="sustainable-marker" style="left: 60%;" title="Sustainable Limit (38.5 kg/week)"></div>
+          <div class="target-marker" id="sustainable-marker" style="left: 60%;" title="Sustainable Limit (38.5 kg/week)" aria-hidden="true"></div>
         </div>
         <div class="progress-header" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
           <span>0 kg CO₂e</span>
@@ -151,48 +153,48 @@
           </div>
         </div>
 
-        <div class="breakdown-legend">
-          <div class="legend-item">
+        <div class="breakdown-legend" role="list" aria-label="Emission category breakdown">
+          <div class="legend-item" role="listitem">
             <div class="legend-info">
-              <span class="legend-color" style="background-color: var(--color-transport);"></span>
+              <span class="legend-color" style="background-color: var(--color-transport);" aria-label="Transport colour indicator" role="presentation"></span>
               <span>🚗 Transport</span>
             </div>
-            <span class="legend-value" id="lbl-val-transport">0.0 kg</span>
+            <span class="legend-value" id="lbl-val-transport" aria-label="Transport emissions">0.0 kg</span>
           </div>
-          <div class="legend-item">
+          <div class="legend-item" role="listitem">
             <div class="legend-info">
-              <span class="legend-color" style="background-color: var(--color-energy);"></span>
+              <span class="legend-color" style="background-color: var(--color-energy);" aria-label="Energy colour indicator" role="presentation"></span>
               <span>⚡ Energy</span>
             </div>
-            <span class="legend-value" id="lbl-val-energy">0.0 kg</span>
+            <span class="legend-value" id="lbl-val-energy" aria-label="Energy emissions">0.0 kg</span>
           </div>
-          <div class="legend-item">
+          <div class="legend-item" role="listitem">
             <div class="legend-info">
-              <span class="legend-color" style="background-color: var(--color-food);"></span>
+              <span class="legend-color" style="background-color: var(--color-food);" aria-label="Food colour indicator" role="presentation"></span>
               <span>🍔 Food</span>
             </div>
-            <span class="legend-value" id="lbl-val-food">0.0 kg</span>
+            <span class="legend-value" id="lbl-val-food" aria-label="Food emissions">0.0 kg</span>
           </div>
-          <div class="legend-item">
+          <div class="legend-item" role="listitem">
             <div class="legend-info">
-              <span class="legend-color" style="background-color: var(--color-consumption);"></span>
+              <span class="legend-color" style="background-color: var(--color-consumption);" aria-label="Consumption colour indicator" role="presentation"></span>
               <span>🛍️ Consumption</span>
             </div>
-            <span class="legend-value" id="lbl-val-consumption">0.0 kg</span>
+            <span class="legend-value" id="lbl-val-consumption" aria-label="Consumption emissions">0.0 kg</span>
           </div>
-          <div class="legend-item">
+          <div class="legend-item" role="listitem">
             <div class="legend-info">
-              <span class="legend-color" style="background-color: var(--color-travel);"></span>
+              <span class="legend-color" style="background-color: var(--color-travel);" aria-label="Travel colour indicator" role="presentation"></span>
               <span>✈️ Travel</span>
             </div>
-            <span class="legend-value" id="lbl-val-travel">0.0 kg</span>
+            <span class="legend-value" id="lbl-val-travel" aria-label="Travel emissions">0.0 kg</span>
           </div>
-          <div class="legend-item">
+          <div class="legend-item" role="listitem">
             <div class="legend-info">
-              <span class="legend-color" style="background-color: var(--color-waste);"></span>
+              <span class="legend-color" style="background-color: var(--color-waste);" aria-label="Waste colour indicator" role="presentation"></span>
               <span>🗑️ Waste</span>
             </div>
-            <span class="legend-value" id="lbl-val-waste">0.0 kg</span>
+            <span class="legend-value" id="lbl-val-waste" aria-label="Waste emissions">0.0 kg</span>
           </div>
         </div>
 
@@ -406,26 +408,26 @@
         </div>
       </div>
 
-      <div class="chat-messages" id="chat-messages-container">
+      <div class="chat-messages" id="chat-messages-container" role="log" aria-live="polite" aria-label="EcoTrack AI carbon tracking conversation" aria-relevant="additions">
         <!-- Messages get injected dynamically here -->
       </div>
 
       <div class="chat-input-area">
         
         <!-- Quick logs row -->
-        <div class="quick-log-row">
-          <span class="quick-log-badge" data-log="drove 15 km in gasoline car">🚗 Drive 15km</span>
-          <span class="quick-log-badge" data-log="ate a beef burger meal">🍔 Beef Meal</span>
-          <span class="quick-log-badge" data-log="had a delicious vegan salad">🥗 Vegan Meal</span>
-          <span class="quick-log-badge" data-log="bought organic food and vegetables">🛍️ Organic Food</span>
-          <span class="quick-log-badge" data-log="recycled all our paper and plastic">🗑️ Recycle Trash</span>
-          <span class="quick-log-badge" data-log="took the bus for 8 km">🚌 Bus 8km</span>
+        <div class="quick-log-row" role="group" aria-label="Quick carbon activity shortcuts">
+          <span class="quick-log-badge" data-log="drove 15 km in gasoline car" aria-label="Quick log: drove 15 kilometres in gasoline car">🚗 Drive 15km</span>
+          <span class="quick-log-badge" data-log="ate a beef burger meal" aria-label="Quick log: ate a beef burger meal">🍔 Beef Meal</span>
+          <span class="quick-log-badge" data-log="had a delicious vegan salad" aria-label="Quick log: had a vegan salad meal">🥗 Vegan Meal</span>
+          <span class="quick-log-badge" data-log="bought organic food and vegetables" aria-label="Quick log: bought organic food">🛍️ Organic Food</span>
+          <span class="quick-log-badge" data-log="recycled all our paper and plastic" aria-label="Quick log: recycled paper and plastic">🗑️ Recycle Trash</span>
+          <span class="quick-log-badge" data-log="took the bus for 8 km" aria-label="Quick log: took the bus for 8 kilometres">🚌 Bus 8km</span>
         </div>
 
         <div class="input-container">
-          <input type="text" id="chat-input-field" class="chat-input" placeholder="Tell EcoTrack what you did today (e.g. 'I drove 30 km')..." autocomplete="off">
-          <button id="chat-send-btn" class="send-btn" title="Send message">
-            <svg viewBox="0 0 24 24">
+          <input type="text" id="chat-input-field" class="chat-input" placeholder="Tell EcoTrack what you did today (e.g. 'I drove 30 km')..." autocomplete="off" aria-label="Type a carbon activity to log, for example: I drove 20 km" maxlength="500">
+          <button id="chat-send-btn" class="send-btn" title="Send message" aria-label="Send activity to EcoTrack AI">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
             </svg>
           </button>

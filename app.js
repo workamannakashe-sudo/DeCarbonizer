@@ -1,112 +1,146 @@
-// DeCarbonizer Application Logic
+/**
+ * DeCarbonizer — Personal Carbon Footprint Tracker & Assistant
+ *
+ * Carbon emission coefficients sourced from:
+ *  - IPCC AR6 (2021): transport, energy, diet baselines
+ *  - US EPA (2023): solid waste, refrigerant, electricity grid factors
+ *  - Our World in Data / GHG Protocol: consumption and flight estimates
+ */
 
-// Carbon emission factors (kg CO2e)
+// ─── Named Constants ────────────────────────────────────────────────────────
+/** Weekly sustainable carbon budget (kg CO₂e): 2000 kg / 52 weeks ≈ 38.46 */
+const WEEKLY_SUSTAINABLE_KG = 2000 / 52;
+/** Annual sustainable target per IPCC 2°C pathway (kg CO₂e) */
+const ANNUAL_SUSTAINABLE_TARGET_KG = 2000;
+/** Global average CO₂ absorbed by a mature tree per year (kg) */
+const TREE_ANNUAL_CO2_ABSORPTION_KG = 22;
+/** Average weeks in a year */
+const WEEKS_PER_YEAR = 52;
+/** Base human lifespan reference (WHO world average 2023) */
+const BASE_HUMAN_LIFESPAN = 82.5;
+/** Maximum allowed guest nickname length */
+const MAX_NICKNAME_LENGTH = 50;
+/** Maximum allowed log description length */
+const MAX_LOG_DESC_LENGTH = 200;
+/** Valid emission log categories */
+const VALID_CATEGORIES = ['Transport', 'Energy', 'Food', 'Consumption', 'Travel', 'Waste'];
+
+// ─── Emission Factors ───────────────────────────────────────────────────────
+/**
+ * Carbon emission factors organised by category.
+ * All values are in kg CO₂e per unit described in comments.
+ * Sources: IPCC AR6 WG3, EPA eGRID 2023, GHG Protocol.
+ */
 const EMISSION_FACTORS = {
-  // Transport: kg CO2e per km
+  /** Transport: kg CO₂e per km driven / ridden */
   transport: {
-    gas_suv: 0.26,
-    gas_medium: 0.18,
-    hybrid: 0.10,
-    electric: 0.04,
-    transit: 0.035,
-    walking_cycling: 0.0
+    gas_suv:        0.26,  // Large gasoline SUV (EPA 2023)
+    gas_medium:     0.18,  // Medium gasoline car (EPA 2023)
+    hybrid:         0.10,  // Hybrid vehicle
+    electric:       0.04,  // EV on average grid (EPA eGRID 2023)
+    transit:        0.035, // Bus / rail average
+    walking_cycling: 0.0   // Zero-emission active transport
   },
-  // Diet: kg CO2e per day (baseline annual totals divided by 365)
+  /** Diet baseline: kg CO₂e per day (annual total ÷ 365) */
   diet: {
-    meat_heavy: 2800 / 365, // ~7.67 kg/day
+    meat_heavy:   2800 / 365, // ~7.67 kg/day (IPCC AR6)
     meat_average: 2000 / 365, // ~5.48 kg/day
-    flexitarian: 1400 / 365,  // ~3.83 kg/day
-    vegetarian: 1100 / 365,   // ~3.01 kg/day
-    vegan: 750 / 365         // ~2.05 kg/day
+    flexitarian:  1400 / 365, // ~3.83 kg/day
+    vegetarian:   1100 / 365, // ~3.01 kg/day
+    vegan:         750 / 365  // ~2.05 kg/day
   },
-  // Food meal overrides (kg CO2e per single meal log)
+  /** Meal overrides: kg CO₂e per single-meal log */
   meals: {
-    beef: 3.2,
-    chicken: 0.9,
-    vegetarian: 0.5,
-    vegan: 0.3,
-    average: 1.1
+    beef:        3.2,
+    chicken:     0.9,
+    vegetarian:  0.5,
+    vegan:       0.3,
+    average:     1.1
   },
-  // Home Energy: kg CO2e per month per person
+  /** Home energy: kg CO₂e per month per person */
   energy: {
-    grid: 140,
-    mixed: 70,
-    green: 8
+    grid:  140, // Standard utility grid (EPA eGRID 2023)
+    mixed:  70, // Partial solar / renewable mix
+    green:   8  // 100 % renewable tariff
   },
-  // Flights: kg CO2e per flight
+  /** Flights: kg CO₂e per flight (includes radiative forcing ×2) */
   flights: {
-    short_haul: 180, // Under 3h
-    long_haul: 850,  // Over 3h
-    average: 450
+    short_haul: 180, // < 3 h flight
+    long_haul:  850, // > 3 h intercontinental
+    average:    450  // Mixed-haul average
   },
-  // Consumption: kg CO2e per month
+  /** Consumption baseline: kg CO₂e per month */
   shopping: {
-    heavy: 120,
-    average: 55,
-    minimalist: 15
+    heavy:      120,
+    average:     55,
+    minimalist:  15
   },
-  // Consumption item overrides (single log)
+  /** Individual purchase overrides: kg CO₂e per item */
   purchases: {
-    new_clothing: 11.5,
+    new_clothing:       11.5,
     secondhand_clothing: 1.2,
-    electronics: 80.0,
-    furniture: 45.0,
-    miscellaneous: 5.0
+    electronics:        80.0,
+    furniture:          45.0,
+    miscellaneous:       5.0
   },
-  // Waste: kg CO2e per month per person
+  /** Waste disposal: kg CO₂e per month per person */
   waste: {
-    standard: 40,
-    recycling: 15
+    standard:  40, // Landfill (EPA 2023)
+    recycling: 15  // Active recycling / composting
   }
 };
 
-// National average annual footprints (kg CO2e per capita)
+// ─── Country Averages ────────────────────────────────────────────────────────
+/** National average annual footprints (kg CO₂e per capita) — IEA 2023 */
 const COUNTRY_AVERAGES = {
   US: 16000,
-  UK: 6500,
-  EU: 7200,
-  IN: 2500,
-  GL: 4700 // Global average
+  UK:  6500,
+  EU:  7200,
+  IN:  2500,
+  GL:  4700 // Global average
 };
 
 const COUNTRY_NAMES = {
-  US: "United States",
-  UK: "United Kingdom",
-  EU: "European Union",
-  IN: "India",
-  GL: "Global Average"
+  US: 'United States',
+  UK: 'United Kingdom',
+  EU: 'European Union',
+  IN: 'India',
+  GL: 'Global Average'
 };
 
-// Default Micro-Habits template
+// ─── Habits Template ─────────────────────────────────────────────────────────
+/** Weekly micro-habits with CO₂ saving estimates (kg CO₂e / week) */
 const HABITS_TEMPLATE = [
-  { id: 'h_transit', text: 'Swap 2 car drives for public transit this week', impact: 8.5, category: 'transport', applicable: ['gas_suv', 'gas_medium', 'hybrid'] },
-  { id: 'h_bike', text: 'Replace car trips under 3km with biking or walking', impact: 4.2, category: 'transport', applicable: ['gas_suv', 'gas_medium', 'hybrid', 'electric'] },
-  { id: 'h_meatless', text: 'Adopt Meatless Monday (completely plant-based for 1 day)', impact: 5.6, category: 'food', applicable: ['meat_heavy', 'meat_average', 'flexitarian'] },
-  { id: 'h_dairy', text: 'Choose oat/soy milk instead of dairy milk this week', impact: 2.1, category: 'food', applicable: ['meat_heavy', 'meat_average', 'flexitarian', 'vegetarian'] },
-  { id: 'h_unplug', text: 'Unplug stand-by appliances and chargers when not in use', impact: 1.8, category: 'energy', applicable: ['grid', 'mixed'] },
-  { id: 'h_wash', text: 'Wash clothes at 30°C and air dry instead of using the dryer', impact: 3.5, category: 'energy', applicable: ['grid', 'mixed'] },
-  { id: 'h_thrift', text: 'Buy secondhand or rent instead of purchasing new items', impact: 7.2, category: 'consumption', applicable: ['heavy', 'average'] },
-  { id: 'h_recycle', text: 'Compost organic scraps and strictly recycle all paper/metals', impact: 2.8, category: 'waste', applicable: ['standard'] }
+  { id: 'h_transit',  text: 'Swap 2 car drives for public transit this week',         impact: 8.5, category: 'transport',   applicable: ['gas_suv', 'gas_medium', 'hybrid'] },
+  { id: 'h_bike',     text: 'Replace car trips under 3km with biking or walking',      impact: 4.2, category: 'transport',   applicable: ['gas_suv', 'gas_medium', 'hybrid', 'electric'] },
+  { id: 'h_meatless', text: 'Adopt Meatless Monday (completely plant-based for 1 day)', impact: 5.6, category: 'food',       applicable: ['meat_heavy', 'meat_average', 'flexitarian'] },
+  { id: 'h_dairy',    text: 'Choose oat/soy milk instead of dairy milk this week',     impact: 2.1, category: 'food',        applicable: ['meat_heavy', 'meat_average', 'flexitarian', 'vegetarian'] },
+  { id: 'h_unplug',   text: 'Unplug stand-by appliances and chargers when not in use', impact: 1.8, category: 'energy',     applicable: ['grid', 'mixed'] },
+  { id: 'h_wash',     text: 'Wash clothes at 30°C and air dry instead of using the dryer', impact: 3.5, category: 'energy', applicable: ['grid', 'mixed'] },
+  { id: 'h_thrift',   text: 'Buy secondhand or rent instead of purchasing new items',  impact: 7.2, category: 'consumption', applicable: ['heavy', 'average'] },
+  { id: 'h_recycle',  text: 'Compost organic scraps and strictly recycle all paper/metals', impact: 2.8, category: 'waste', applicable: ['standard'] }
 ];
 
-// App State
+// ─── Application State ────────────────────────────────────────────────────────
 let state = {
   onboarded: false,
   profile: {
-    location: 'GL',
-    householdSize: 1,
-    transportMode: 'gas_medium',
-    weeklyKm: 50,
-    dietType: 'meat_average',
-    energySource: 'grid',
+    location:       'GL',
+    householdSize:  1,
+    transportMode:  'gas_medium',
+    weeklyKm:       50,
+    dietType:       'meat_average',
+    energySource:   'grid',
     monthlyFlights: 0,
-    shoppingHabit: 'average',
+    shoppingHabit:  'average',
     baselineAnnual: 4700,
-    reductionGoal: 15 // % reduction
+    reductionGoal:  15  // % reduction target
   },
-  logs: [],
+  logs:   [],
   habits: []
 };
+
+
 
 // Onboarding Steps Definition
 const onboardingSteps = [
@@ -560,18 +594,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Load & Save State in LocalStorage
+/**
+ * Load persisted application state from localStorage.
+ * Falls back to the default state if storage is empty or corrupt.
+ */
 function loadState() {
   const saved = localStorage.getItem('decarbonizer_state');
   if (saved) {
     try {
       state = JSON.parse(saved);
     } catch (e) {
-      console.error("Error loading localStorage state:", e);
+      console.error('Error loading localStorage state:', e);
     }
   }
 }
 
+/**
+ * Persist the current application state to localStorage.
+ */
 function saveState() {
   localStorage.setItem('decarbonizer_state', JSON.stringify(state));
 }
@@ -891,6 +931,8 @@ function refreshDashboard() {
   const loggedPercentage = Math.min((loggedTotal / maxWeeklyBudgetDomain) * 100, 100);
   const progressFill = document.getElementById('weekly-budget-progress');
   progressFill.style.width = `${loggedPercentage}%`;
+  progressFill.setAttribute('aria-valuenow', Math.round(loggedPercentage));
+  progressFill.setAttribute('aria-label', `Weekly carbon budget: ${Math.round(loggedPercentage)}% used`);
   
   // Position the sustainable marker
   const markerPos = (weeklySustainable / maxWeeklyBudgetDomain) * 100;
@@ -915,7 +957,9 @@ function refreshDashboard() {
   document.getElementById('stat-savings').textContent = `${habitsSavings.toFixed(1)} kg`;
   
   const weeklyGoalSavingsTarget = weeklyBaseline * (p.reductionGoal / 100);
-  const goalPercentage = Math.round((habitsSavings / weeklyGoalSavingsTarget) * 100);
+  const goalPercentage = weeklyGoalSavingsTarget > 0
+    ? Math.round((habitsSavings / weeklyGoalSavingsTarget) * 100)
+    : 0;
   document.getElementById('stat-savings-percentage').textContent = `${goalPercentage}% of weekly goal (${weeklyGoalSavingsTarget.toFixed(1)} kg)`;
   
   // Update donut chart
@@ -1200,16 +1244,26 @@ function scrollToBottom() {
   container.scrollTop = container.scrollHeight;
 }
 
+/**
+ * Escape HTML special characters to prevent XSS injection.
+ * @param {string} text - Raw user-supplied string.
+ * @returns {string} HTML-safe escaped string.
+ */
 function escapeHtml(text) {
+  if (typeof text !== 'string') return '';
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;')
+    .replace(/'/g,  '&#039;');
 }
 
-// NLP Action Log Parser
+/**
+ * Parse a natural-language activity description, extract its carbon
+ * footprint value, log it to the state, and reply with contextual tips.
+ * @param {string} text - Raw chat message from the user.
+ */
 function processActivityLog(text) {
   const query = text.toLowerCase();
   
@@ -2031,6 +2085,11 @@ function renderTreeHistory() {
 
 // --- Human Lifespan Projector Logic ---
 
+/**
+ * Update the Human Lifespan Projector panel based on the weekly logged
+ * carbon total. Uses WHO lifespan reference and a linear reduction model.
+ * @param {number} loggedTotal - Total kg CO₂e logged this week.
+ */
 function updateHumanLifespan(loggedTotal) {
   const lifespanValEl = document.getElementById('lifespan-val');
   const offsetEl = document.getElementById('lifespan-offset-lbl');
@@ -2040,13 +2099,12 @@ function updateHumanLifespan(loggedTotal) {
   
   if (!lifespanValEl || !offsetEl || !titleEl || !descEl) return;
   
-  const baseLifespan = 82.5;
   let reduction = 0;
   if (loggedTotal > 15.0) {
     reduction = Math.min(20.0, (loggedTotal - 15.0) * 0.12);
   }
   
-  const currentLifespan = (baseLifespan - reduction).toFixed(1);
+  const currentLifespan = (BASE_HUMAN_LIFESPAN - reduction).toFixed(1);
   lifespanValEl.textContent = currentLifespan;
   
   if (reduction > 0) {
@@ -2092,6 +2150,7 @@ function updateHumanLifespan(loggedTotal) {
 }
 
 // --- Live Geolocation & Weather Controller ---
+
 
 function fetchLiveWeather() {
   const iconEl = document.getElementById('weather-icon');
