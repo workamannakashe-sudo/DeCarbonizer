@@ -482,6 +482,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initMainApp();
   initGoogleServices();
   initGuestLogin();
+  initFirebase();
+  syncDatabaseData();
   
   // Initialize Mobile Tab switcher
   initMobileTabs();
@@ -520,6 +522,99 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem('decarbonizer_state', JSON.stringify(state));
+}
+
+// --- Firebase & Backend Server Database Helpers ---
+window.firebaseInitialized = false;
+
+function initFirebase() {
+  if (typeof firebase === 'undefined') {
+    console.warn("Firebase script not loaded from CDN.");
+    return;
+  }
+  try {
+    const firebaseConfig = {
+      apiKey: "AIzaSyFakeKey_DeCarbonizer_123456789",
+      authDomain: "decarbonizer-tracker.firebaseapp.com",
+      projectId: "decarbonizer-tracker",
+      storageBucket: "decarbonizer-tracker.appspot.com",
+      messagingSenderId: "98765432101",
+      appId: "1:98765432101:web:abcdef123456789"
+    };
+    
+    firebase.initializeApp(firebaseConfig);
+    window.firebaseInitialized = true;
+    console.log("Firebase initialized successfully.");
+  } catch (e) {
+    console.warn("Firebase initialization failed:", e.message);
+  }
+}
+
+async function syncDatabaseData() {
+  const userId = (state.google_user && state.google_user.name) || 'guest';
+  
+  // 1. Fetch from server DB
+  try {
+    const res = await fetch(`/api/logs?userId=${encodeURIComponent(userId)}`);
+    if (res.ok) {
+      const dbLogs = await res.json();
+      if (Array.isArray(dbLogs) && dbLogs.length > 0) {
+        const logMap = new Map();
+        state.logs.forEach(l => logMap.set(l.id, l));
+        dbLogs.forEach(l => logMap.set(l.id, l));
+        state.logs = Array.from(logMap.values());
+        saveState();
+        refreshDashboard();
+      }
+    }
+  } catch (e) {
+    console.warn("Database sync connection offline.");
+  }
+  
+  // 2. Fetch from Firebase
+  if (window.firebaseInitialized) {
+    try {
+      const db = firebase.firestore();
+      const snap = await db.collection("users").doc(userId).collection("logs").get();
+      const fbLogs = [];
+      snap.forEach(doc => fbLogs.push(doc.data()));
+      if (fbLogs.length > 0) {
+        const logMap = new Map();
+        state.logs.forEach(l => logMap.set(l.id, l));
+        fbLogs.forEach(l => logMap.set(l.id, l));
+        state.logs = Array.from(logMap.values());
+        saveState();
+        refreshDashboard();
+      }
+    } catch (e) {
+      console.warn("Firebase logs sync failed:", e.message);
+    }
+  }
+}
+
+async function persistLogToServer(newLog) {
+  const userId = (state.google_user && state.google_user.name) || 'guest';
+  
+  // 1. POST to Server JSON Database
+  try {
+    fetch(`/api/logs?userId=${encodeURIComponent(userId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newLog)
+    });
+  } catch (e) {
+    console.warn("Server DB log sync offline:", e);
+  }
+  
+  // 2. Save to Firebase Firestore
+  if (window.firebaseInitialized) {
+    try {
+      const db = firebase.firestore();
+      db.collection("users").doc(userId).collection("logs").doc(newLog.id).set(newLog);
+    } catch (e) {
+      console.warn("Firebase log sync failed:", e.message);
+    }
+  }
 }
 
 // Onboarding logic
@@ -856,6 +951,10 @@ function initMainApp() {
       if (guestBtn) guestBtn.style.display = 'block';
       if (emojiSpan) emojiSpan.remove();
       
+      // Clear backend database
+      const userId = (state.google_user && state.google_user.name) || 'guest';
+      fetch(`/api/reset?userId=${encodeURIComponent(userId)}`, { method: 'POST' }).catch(() => {});
+
       // Clear chat
       document.getElementById('chat-messages-container').innerHTML = '';
       currentStep = 0;
@@ -1232,6 +1331,7 @@ function processActivityLog(text) {
   state.logs.push(newLog);
   saveState();
   refreshDashboard();
+  persistLogToServer(newLog);
   
   // Render Assistant validation response
   const responses = [
@@ -1616,6 +1716,7 @@ function initEcosystemEvents() {
         state.logs.push(waterLog);
         saveState();
         refreshDashboard();
+        persistLogToServer(waterLog);
         
         // Add a friendly notification in chat
         appendAssistantMessage("💧 *Water Tree active!* You've completed a watering activity, offsetting **2.0 kg CO₂e** from your weekly emissions tracker! Watch your tree flourish.");
@@ -1866,6 +1967,11 @@ function getWeatherData(lat, lon, label) {
         if (tempEl) tempEl.textContent = `${Math.round(temp)}°C`;
         if (iconEl) iconEl.textContent = w.icon;
         if (condEl) condEl.textContent = `${w.text} • ${label}`;
+        
+        const mapIframe = document.getElementById('google-maps-iframe');
+        if (mapIframe) {
+          mapIframe.src = `https://maps.google.com/maps?q=${lat},${lon}&z=11&output=embed`;
+        }
         
         if (window.ecosystem3D) {
           window.ecosystem3D.updateWeather(temp, code, isDay, wind);

@@ -18,6 +18,81 @@ const MIME_TYPES = {
 const server = http.createServer((req, res) => {
   // Parse URL and sanitize path to prevent traversal
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  
+  // Handle API Database Requests
+  if (parsedUrl.pathname === '/api/logs') {
+    const userId = parsedUrl.searchParams.get('userId') || 'guest';
+    const dbPath = path.join(__dirname, 'data', 'database.json');
+    
+    if (req.method === 'GET') {
+      fs.readFile(dbPath, 'utf8', (err, data) => {
+        let db = {};
+        if (!err && data) {
+          try { db = JSON.parse(data); } catch(e) {}
+        }
+        const userLogs = db[userId] || [];
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify(userLogs));
+      });
+      return;
+    }
+    
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        try {
+          const newLog = JSON.parse(body);
+          const dirPath = path.join(__dirname, 'data');
+          if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+          }
+          
+          fs.readFile(dbPath, 'utf8', (err, data) => {
+            let db = {};
+            if (!err && data) {
+              try { db = JSON.parse(data); } catch(e) {}
+            }
+            if (!db[userId]) db[userId] = [];
+            db[userId].push(newLog);
+            
+            fs.writeFile(dbPath, JSON.stringify(db, null, 2), 'utf8', (err) => {
+              if (err) {
+                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.end('Server Error writing to database');
+              } else {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ status: 'success', log: newLog }));
+              }
+            });
+          });
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.end('Invalid JSON body');
+        }
+      });
+      return;
+    }
+  }
+
+  if (parsedUrl.pathname === '/api/reset' && req.method === 'POST') {
+    const userId = parsedUrl.searchParams.get('userId') || 'guest';
+    const dbPath = path.join(__dirname, 'data', 'database.json');
+    
+    fs.readFile(dbPath, 'utf8', (err, data) => {
+      let db = {};
+      if (!err && data) {
+        try { db = JSON.parse(data); } catch(e) {}
+      }
+      db[userId] = [];
+      fs.writeFile(dbPath, JSON.stringify(db, null, 2), 'utf8', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'success' }));
+      });
+    });
+    return;
+  }
+
   let safePath = parsedUrl.pathname === '/' ? 'index.html' : parsedUrl.pathname;
   
   // Resolve absolute path

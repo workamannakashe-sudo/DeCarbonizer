@@ -9,3 +9,4 @@ Dockerfile
 *.png
 *.jpg
 *.md
+data/

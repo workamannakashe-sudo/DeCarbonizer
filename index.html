@@ -11,6 +11,10 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
   
+  <!-- Firebase App & Firestore Legacy/Compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  
   <!-- Three.js Library & OrbitControls -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -361,6 +365,14 @@
           </div>
           <div style="text-align: left; font-size: 0.8rem; color: var(--text-muted); line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
             🌡️ At this emission rate, your contribution to global warming equals approximately <strong id="proj-temp-rise" style="color: var(--color-energy);">0.0</strong> nanodegrees Celsius.
+          </div>
+        </div>
+
+        <!-- Google Maps Location Card -->
+        <div class="maps-card glass-panel" style="padding: 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.015); display: flex; flex-direction: column; gap: 10px;">
+          <h3 class="insight-section-title" style="margin-bottom: 5px;">📍 Live Climate Map (Google Maps)</h3>
+          <div id="google-maps-container" style="width: 100%; height: 180px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08);">
+            <iframe id="google-maps-iframe" width="100%" height="100%" frameborder="0" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
           </div>
         </div>
 
