@@ -1,20 +1,41 @@
-# Use official Node.js runtime as the base image
-FROM node:20-slim
+# ──────────────────────────────────────────────────────────────────
+# Stage 1: dependency installation (cached layer)
+# ──────────────────────────────────────────────────────────────────
+FROM node:20-slim AS deps
 
-# Set the working directory inside the container
 WORKDIR /app
 
-# Copy package.json
+# Copy only the manifest first so Docker can cache the npm install
+# layer independently of application source changes.
 COPY package.json ./
+RUN npm install --omit=dev --ignore-scripts
 
-# Install production dependencies (if any are added later)
-RUN npm install --only=production
+# ──────────────────────────────────────────────────────────────────
+# Stage 2: production image
+# ──────────────────────────────────────────────────────────────────
+FROM node:20-slim AS runtime
 
-# Copy the rest of the application files
-COPY . .
+# Create a non-root user for least-privilege execution
+RUN groupadd --system appgroup && \
+    useradd  --system --gid appgroup --no-create-home appuser
 
-# Expose the port that the application runs on
+WORKDIR /app
+
+# Copy only what is needed from the deps stage (no dev tools)
+COPY --from=deps /app/node_modules ./node_modules
+
+# Copy application source (respects .dockerignore)
+COPY --chown=appuser:appgroup . .
+
+# Switch to non-root user before starting the process
+USER appuser
+
+# Expose the port declared in the application
 EXPOSE 8080
 
-# Start the application
-CMD ["npm", "start"]
+# Healthcheck: ensure the server is responding within 30 s
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+
+# Start the server
+CMD ["node", "server.js"]

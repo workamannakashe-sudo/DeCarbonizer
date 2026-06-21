@@ -691,6 +691,13 @@ body {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+.quick-log-badge:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  color: var(--text-main);
+  border-color: var(--primary);
+}
+
 .input-container {
   display: flex;
   gap: 12px;
@@ -1344,6 +1351,12 @@ body {
 
 .eco-action-btn:active {
   transform: translateY(1px);
+}
+
+.eco-action-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-color: var(--primary);
 }
 
 .eco-action-btn .btn-icon {

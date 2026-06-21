@@ -1,14 +1,26 @@
 {
   "name": "decarbonizer",
   "version": "1.0.0",
-  "description": "Personal Carbon Footprint Tracker & Assistant",
+  "description": "Personal carbon footprint tracker and AI-assisted reduction assistant. Conversational logging, real-time 3D visualiser, weekly habit tracking, and science-backed emission factors.",
   "main": "server.js",
+  "author": "DeCarbonizer Team",
+  "license": "MIT",
+  "private": true,
+  "homepage": "https://github.com/workamannakashe-sudo/DeCarbonizer",
+  "keywords": [
+    "carbon-footprint",
+    "sustainability",
+    "climate",
+    "emissions",
+    "green-tech",
+    "personal-tracker"
+  ],
   "scripts": {
     "start": "node server.js",
-    "test": "node test_decarbonizer.js"
+    "dev":   "node server.js",
+    "test":  "node test_decarbonizer.js"
   },
   "engines": {
     "node": ">=18"
-  },
-  "private": true
+  }
 }

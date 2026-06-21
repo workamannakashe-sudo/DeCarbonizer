@@ -7,7 +7,7 @@
  *  - Our World in Data / GHG Protocol: consumption and flight estimates
  */
 
-// ─── Named Constants ────────────────────────────────────────────────────────
+// ─── Named Constants ────────────────────────────────────────────────────────────
 /** Weekly sustainable carbon budget (kg CO₂e): 2000 kg / 52 weeks ≈ 38.46 */
 const WEEKLY_SUSTAINABLE_KG = 2000 / 52;
 /** Annual sustainable target per IPCC 2°C pathway (kg CO₂e) */
@@ -16,6 +16,8 @@ const ANNUAL_SUSTAINABLE_TARGET_KG = 2000;
 const TREE_ANNUAL_CO2_ABSORPTION_KG = 22;
 /** Average weeks in a year */
 const WEEKS_PER_YEAR = 52;
+/** Days in a standard week */
+const DAYS_PER_WEEK = 7;
 /** Base human lifespan reference (WHO world average 2023) */
 const BASE_HUMAN_LIFESPAN = 82.5;
 /** Maximum allowed guest nickname length */
@@ -24,6 +26,10 @@ const MAX_NICKNAME_LENGTH = 50;
 const MAX_LOG_DESC_LENGTH = 200;
 /** Valid emission log categories */
 const VALID_CATEGORIES = ['Transport', 'Energy', 'Food', 'Consumption', 'Travel', 'Waste'];
+/** Scale divisor used to convert weekly CO₂e (kg) into a [0,1] ecosystem health score */
+const ECOSYSTEM_HEALTH_SCALE = 100.0;
+/** Kilometres per mile, used for unit conversion */
+const KM_PER_MILE = 1.60934;
 
 // ─── Emission Factors ───────────────────────────────────────────────────────
 /**
@@ -178,7 +184,9 @@ const onboardingSteps = [
     save: () => {
       state.profile.location = document.getElementById('ob-input-location').value;
       state.profile.householdSize = parseInt(document.getElementById('ob-input-household').value);
-      const nameVal = document.getElementById('ob-input-name').value.trim() || "EcoHero";
+      // Sanitize nickname: trim, enforce max length, and strip any HTML tags
+      const rawName = document.getElementById('ob-input-name').value.trim();
+      const nameVal = (rawName.replace(/<[^>]*>/g, '').slice(0, MAX_NICKNAME_LENGTH)) || 'EcoHero';
       state.profile.nickname = nameVal;
       if (!state.google_user) {
         state.google_user = {
@@ -532,33 +540,58 @@ const onboardingSteps = [
 
 let currentStep = 0;
 
-// Calculation Helper
-function calculateBaseline() {
+// ─── Calculation Helpers ─────────────────────────────────────────────────────
+/**
+ * Calculate annual carbon baseline (kg CO₂e) from the user's onboarding profile.
+ * Aggregates: transport, diet, energy, flights, consumption, and waste.
+ * Sources: IPCC AR6 WG3, EPA eGRID 2023, GHG Protocol.
+ * @returns {number} Annual carbon footprint in kg CO₂e.
+ */
+global.calculateBaseline = function calculateBaseline() {
   const p = state.profile;
-  
-  // Transport annual
-  const transFactor = EMISSION_FACTORS.transport[p.transportMode] || EMISSION_FACTORS.transport.gas_medium;
-  const transportAnnual = p.weeklyKm * 52 * transFactor;
-  
-  // Diet annual
+
+  // Transport: kg CO₂e/km × km/week × weeks/year
+  const transFactor     = EMISSION_FACTORS.transport[p.transportMode] || EMISSION_FACTORS.transport.gas_medium;
+  const transportAnnual = p.weeklyKm * WEEKS_PER_YEAR * transFactor;
+
+  // Diet: daily factor × 365 days
   const dietFactor = EMISSION_FACTORS.diet[p.dietType] || EMISSION_FACTORS.diet.meat_average;
   const dietAnnual = dietFactor * 365;
-  
-  // Energy annual (divided by household size)
+
+  // Energy: monthly factor × 12 months (per person)
   const energyFactor = EMISSION_FACTORS.energy[p.energySource] || EMISSION_FACTORS.energy.grid;
-  const energyAnnual = (energyFactor * 12);
-  
-  // Flights annual
+  const energyAnnual = energyFactor * 12;
+
+  // Flights: monthly flights × 12 months × average flight CO₂
   const flightsAnnual = p.monthlyFlights * 12 * EMISSION_FACTORS.flights.average;
-  
-  // Consumption annual
-  const shopFactor = EMISSION_FACTORS.shopping[p.shoppingHabit] || EMISSION_FACTORS.shopping.average;
+
+  // Shopping / consumption: monthly factor × 12 months
+  const shopFactor        = EMISSION_FACTORS.shopping[p.shoppingHabit] || EMISSION_FACTORS.shopping.average;
   const consumptionAnnual = shopFactor * 12;
-  
-  // Waste annual (per person)
-  const wasteAnnual = EMISSION_FACTORS.waste.standard * 12; // Base per person
-  
+
+  // Waste: standard monthly disposal × 12 months per person
+  const wasteAnnual = EMISSION_FACTORS.waste.standard * 12;
+
   return transportAnnual + dietAnnual + energyAnnual + flightsAnnual + consumptionAnnual + wasteAnnual;
+};
+
+/**
+ * Resolve the CSS color variable for a given emission category.
+ * Centralises the category→color mapping used in both the history list
+ * and any future UI components.
+ * @param {string} category - One of the VALID_CATEGORIES strings.
+ * @returns {string} A CSS custom-property reference string (e.g. 'var(--color-transport)').
+ */
+function getCategoryColor(category) {
+  const MAP = {
+    Transport:   'var(--color-transport)',
+    Energy:      'var(--color-energy)',
+    Food:        'var(--color-food)',
+    Consumption: 'var(--color-consumption)',
+    Travel:      'var(--color-travel)',
+    Waste:       'var(--color-waste)'
+  };
+  return MAP[category] || 'var(--text-muted)';
 }
 
 // Initialize Application
@@ -616,7 +649,13 @@ function saveState() {
   localStorage.setItem('decarbonizer_state', JSON.stringify(state));
 }
 
-// --- Firebase & Backend Server Database Helpers ---
+// ─── Firebase & Backend Sync ─────────────────────────────────────────────────
+/**
+ * Initialise Firebase using placeholder credentials.
+ * Silently degrades if the Firebase SDK is not loaded from CDN.
+ * Real credentials should be injected via environment variables in production.
+ */
+/** Flag set to true once Firebase app initialisation succeeds. */
 window.firebaseInitialized = false;
 
 function initFirebase() {
@@ -642,6 +681,12 @@ function initFirebase() {
   }
 }
 
+/**
+ * Synchronise logs from both the local JSON server and Firebase Firestore
+ * into the current in-memory state, deduplicating by log ID.
+ * Falls back gracefully if either backend is unavailable.
+ * @returns {Promise<void>}
+ */
 async function syncDatabaseData() {
   const userId = (state.google_user && state.google_user.name) || 'guest';
   
@@ -684,6 +729,12 @@ async function syncDatabaseData() {
   }
 }
 
+/**
+ * Persist a new log entry to both the local JSON server and Firebase Firestore.
+ * Both writes are best-effort — failures are logged to console only.
+ * @param {Object} newLog - The validated log object to persist.
+ * @returns {Promise<void>}
+ */
 async function persistLogToServer(newLog) {
   const userId = (state.google_user && state.google_user.name) || 'guest';
   
@@ -709,7 +760,13 @@ async function persistLogToServer(newLog) {
   }
 }
 
-// Accessible Focus Trap Helper
+/**
+ * Trap keyboard focus inside an overlay modal.
+ * Prevents Tab from escaping the modal, and handles Escape to close it.
+ * Restores focus to the previously active element when the overlay closes.
+ * @param {HTMLElement} overlay - The full-screen overlay element.
+ * @param {HTMLElement} card    - The modal card containing focusable children.
+ */
 function initFocusTrap(overlay, card) {
   let prevActiveElement = null;
 
@@ -880,34 +937,32 @@ function setupDefaultHabits() {
   state.habits = habits;
 }
 
-// Main Dashboard rendering
+/**
+ * Re-render the entire dashboard UI from the current application state.
+ * Updates stat cards, progress bar, pie chart, habits list, and history log.
+ * Should be called any time state.logs, state.habits, or state.profile changes.
+ */
 function refreshDashboard() {
   const p = state.profile;
-  const weeklyBaseline = p.baselineAnnual / 52;
-  const goalFraction = 1 - (p.reductionGoal / 100);
-  const weeklyTarget = weeklyBaseline * goalFraction;
-  const weeklySustainable = 2000 / 52; // ~38.46 kg per week
-  
-  // Update stats
+  const weeklyBaseline    = p.baselineAnnual / WEEKS_PER_YEAR;
+  const weeklySustainable = WEEKLY_SUSTAINABLE_KG; // ANNUAL_SUSTAINABLE_TARGET_KG / 52 ≈ 38.46
+
+  // Update baseline stat card
   document.getElementById('stat-baseline').textContent = `${Math.round(p.baselineAnnual).toLocaleString()} kg`;
-  
+
   const regionalAvg = COUNTRY_AVERAGES[p.location] || COUNTRY_AVERAGES.GL;
-  const compareAvg = Math.round((p.baselineAnnual / regionalAvg) * 100);
-  document.getElementById('stat-country-compare').innerHTML = `<strong>${compareAvg}%</strong> of ${COUNTRY_NAMES[p.location] || "Global"} Avg`;
-  
-  // Calculate logged totals (this week - simulate logs in past 7 days)
-  let transportTotal = 0;
-  let energyTotal = 0;
-  let foodTotal = 0;
+  const compareAvg  = Math.round((p.baselineAnnual / regionalAvg) * 100);
+  document.getElementById('stat-country-compare').innerHTML =
+    `<strong>${compareAvg}%</strong> of ${COUNTRY_NAMES[p.location] || 'Global'} Avg`;
+
+  // Accumulate logged totals by category
+  let transportTotal   = 0;
+  let energyTotal      = 0;
+  let foodTotal        = 0;
   let consumptionTotal = 0;
-  let travelTotal = 0;
-  let wasteTotal = 0;
-  
-  // Add daily baselines from onboarding profile as fallback for non-logged categories
-  // to give a realistic running baseline + daily updates
-  const daysInWeek = 7;
-  const transDay = (weeklyBaseline - (p.monthlyFlights * 12 * EMISSION_FACTORS.flights.average / 52)) / 7;
-  
+  let travelTotal      = 0;
+  let wasteTotal       = 0;
+
   state.logs.forEach(log => {
     // Only count logs in current weekly window
     const val = parseFloat(log.co2);
@@ -995,13 +1050,13 @@ function refreshDashboard() {
 
   // Update 3D Ecosystem Tree
   if (window.ecosystem3D && !window.ecosystem3D.isSimulator) {
-    const calculatedHealth = Math.max(0.0, 1.0 - (loggedTotal / 100.0));
+    const calculatedHealth = Math.max(0.0, 1.0 - (loggedTotal / ECOSYSTEM_HEALTH_SCALE));
     window.ecosystem3D.updateEcosystem(calculatedHealth, loggedTotal);
     updateTodayTreeHistory(calculatedHealth);
     updateHumanLifespan(loggedTotal);
     updatePlanetaryProjection(loggedTotal);
   } else if (window.ecosystem3D && window.ecosystem3D.isSimulator) {
-    // Keep lifespan updated with simulator value
+    // Keep lifespan/projection updated with the simulator's current value
     updateHumanLifespan(window.ecosystem3D.currentCo2);
     updatePlanetaryProjection(window.ecosystem3D.currentCo2);
   }
@@ -1053,53 +1108,79 @@ function renderHabitsList() {
   document.getElementById('habits-completed-summary').textContent = `${checkedCount} of ${state.habits.length} active`;
 }
 
+/**
+ * Render the paginated activity history list from state.logs.
+ * Displays entries newest-first, each with a delete button that removes
+ * the log from both state and the server database.
+ */
 function renderHistoryList() {
   const container = document.getElementById('history-list-container');
-  const emptyText = document.getElementById('empty-history-text');
-  
-  // Remove existing items (except empty text)
-  const items = container.querySelectorAll('.history-item');
-  items.forEach(i => i.remove());
-  
+  const emptyText  = document.getElementById('empty-history-text');
+
+  // Remove existing items (except the empty-state placeholder)
+  container.querySelectorAll('.history-item').forEach(i => i.remove());
+
   document.getElementById('logs-count').textContent = `${state.logs.length} items logged`;
-  
+
   if (state.logs.length === 0) {
     emptyText.style.display = 'block';
-  } else {
-    emptyText.style.display = 'none';
-    
-    // Render starting with newest
-    state.logs.slice().reverse().forEach(log => {
-      const date = new Date(log.timestamp);
-      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      
-      const item = document.createElement('div');
-      item.className = 'history-item';
-      
-      let catColor = 'var(--text-muted)';
-      if (log.category === 'Transport') catColor = 'var(--color-transport)';
-      else if (log.category === 'Energy') catColor = 'var(--color-energy)';
-      else if (log.category === 'Food') catColor = 'var(--color-food)';
-      else if (log.category === 'Consumption') catColor = 'var(--color-consumption)';
-      else if (log.category === 'Travel') catColor = 'var(--color-travel)';
-      else if (log.category === 'Waste') catColor = 'var(--color-waste)';
-      
-      item.innerHTML = `
-        <div class="history-meta">
-          <span class="history-name">${escapeHtml(log.description)}</span>
-          <span class="history-date">${timeStr} • ${log.category}</span>
-        </div>
-        <span class="history-value-badge" style="background: rgba(255,255,255,0.03); color: ${catColor}; border: 1px solid ${catColor}40;">
-          +${log.co2.toFixed(1)} kg
-        </span>
-      `;
-      
-      container.appendChild(item);
-    });
+    return;
   }
+
+  emptyText.style.display = 'none';
+
+  // Render starting with newest
+  state.logs.slice().reverse().forEach(log => {
+    const date    = new Date(log.timestamp);
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const catColor = getCategoryColor(log.category);
+    const co2Sign  = log.co2 >= 0 ? '+' : '';
+
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.dataset.logId = log.id;
+
+    item.innerHTML = `
+      <div class="history-meta">
+        <span class="history-name">${escapeHtml(log.description)}</span>
+        <span class="history-date">${timeStr} • ${escapeHtml(log.category)}</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="history-value-badge" style="background: rgba(255,255,255,0.03); color: ${catColor}; border: 1px solid ${catColor}40;">
+          ${co2Sign}${log.co2.toFixed(1)} kg
+        </span>
+        <button
+          class="history-delete-btn"
+          aria-label="Delete log entry: ${escapeHtml(log.description)}"
+          title="Delete this log entry"
+          style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:0.85rem; padding:2px 5px; border-radius:4px; transition:color 0.15s;"
+        >✕</button>
+      </div>
+    `;
+
+    // Delete handler
+    item.querySelector('.history-delete-btn').addEventListener('click', () => {
+      const logId = log.id;
+      state.logs = state.logs.filter(l => l.id !== logId);
+      saveState();
+      refreshDashboard();
+      // Best-effort server sync
+      const userId = (state.google_user && state.google_user.name) || 'guest';
+      fetch(`/api/logs?userId=${encodeURIComponent(userId)}&logId=${encodeURIComponent(logId)}`,
+        { method: 'DELETE' }
+      ).catch(() => {});
+    });
+
+    container.appendChild(item);
+  });
 }
 
 // Initial Greeting Message from Chatbot
+/**
+ * Send the initial welcome message in the chat panel after successful onboarding.
+ * Summarises the calculated annual baseline, country comparison, weekly budget,
+ * and encourages the user to start logging activities.
+ */
 function sendSystemGreeting() {
   const p = state.profile;
   const weeklyTarget = (p.baselineAnnual / 52) * (1 - p.reductionGoal / 100);
@@ -1115,7 +1196,11 @@ function sendSystemGreeting() {
   appendAssistantMessage(greetMsg);
 }
 
-// Main Chat Console Engine
+/**
+ * Initialise the main application chat console.
+ * Binds the send button, Enter-key shortcut, quick-log badge clicks,
+ * reset button, and shows the appropriate greeting message.
+ */
 function initMainApp() {
   const sendBtn = document.getElementById('chat-send-btn');
   const inputField = document.getElementById('chat-input-field');
@@ -1187,6 +1272,11 @@ function initMainApp() {
   }
 }
 
+/**
+ * Read, trim and dispatch the user's chat input message.
+ * Clears the input field and delegates to `processActivityLog` after a brief
+ * UI delay so the user message bubble renders first.
+ */
 function handleUserSendMessage() {
   const inputField = document.getElementById('chat-input-field');
   const query = inputField.value.trim();
@@ -1202,6 +1292,11 @@ function handleUserSendMessage() {
   }, 400);
 }
 
+/**
+ * Append a user chat bubble to the message list.
+ * Input is HTML-escaped before rendering to prevent XSS.
+ * @param {string} text - Raw plaintext message from the user.
+ */
 function appendUserMessage(text) {
   const container = document.getElementById('chat-messages-container');
   const msgDiv = document.createElement('div');
@@ -1218,6 +1313,12 @@ function appendUserMessage(text) {
   scrollToBottom();
 }
 
+/**
+ * Append an assistant response bubble to the message list.
+ * Supports a safe subset of Markdown: **bold** and *italic*.
+ * The HTML is trusted (assistant-generated), not user-supplied.
+ * @param {string} html - HTML content for the assistant bubble.
+ */
 function appendAssistantMessage(html) {
   const container = document.getElementById('chat-messages-container');
   const msgDiv = document.createElement('div');
@@ -1239,6 +1340,9 @@ function appendAssistantMessage(html) {
   scrollToBottom();
 }
 
+/**
+ * Scroll the chat messages container to its most recent message.
+ */
 function scrollToBottom() {
   const container = document.getElementById('chat-messages-container');
   container.scrollTop = container.scrollHeight;
@@ -1367,40 +1471,58 @@ function processActivityLog(text) {
   let co2 = 0;
   let tip = '';
   
-  // Helper to extract first number
-  const numMatch = query.match(/(\d+(?:\.\d+)?)/);
+  // Helper to extract first number from query
+  const numMatch  = query.match(/(\d+(?:\.\d+)?)/);
   const numberVal = numMatch ? parseFloat(numMatch[1]) : null;
 
   // 1. TRANSPORT PARSE
-  if (query.includes('drive') || query.includes('drove') || query.includes('car') || query.includes('km') || query.includes('miles') || query.includes('travelled') || query.includes('transit') || query.includes('bus') || query.includes('train')) {
+  if (
+    query.includes('drive') || query.includes('drove') || query.includes('car') ||
+    query.includes('km') || query.includes('mile') || query.includes('travelled') ||
+    query.includes('transit') || query.includes('bus') || query.includes('train') ||
+    query.includes('commut') || query.includes('cycled') || query.includes('biked') ||
+    query.includes('walked to') || query.includes('subway') || query.includes('tram')
+  ) {
     category = 'Transport';
-    let distance = numberVal || 15; // default 15km if no distance provided
+    let distanceKm = numberVal || 15; // default 15 km if no distance provided
+
+    // Convert miles to km if the user specified miles
+    if (query.includes('mile')) {
+      distanceKm = distanceKm * KM_PER_MILE;
+    }
+
     let factorName = state.profile.transportMode;
-    let descMode = 'gas car';
+    let descMode   = 'gas car';
 
     if (query.includes('electric') || query.includes('ev')) {
       factorName = 'electric';
-      descMode = 'Electric vehicle';
+      descMode   = 'Electric vehicle';
     } else if (query.includes('hybrid')) {
       factorName = 'hybrid';
-      descMode = 'Hybrid vehicle';
-    } else if (query.includes('bus') || query.includes('train') || query.includes('transit')) {
+      descMode   = 'Hybrid vehicle';
+    } else if (
+      query.includes('bus') || query.includes('train') || query.includes('transit') ||
+      query.includes('subway') || query.includes('tram') || query.includes('commuted by')
+    ) {
       factorName = 'transit';
-      descMode = 'Public Transit';
-    } else if (query.includes('walk') || query.includes('bike') || query.includes('cycle') || query.includes('walked') || query.includes('biked') || query.includes('cycling')) {
+      descMode   = 'Public Transit';
+    } else if (
+      query.includes('walk') || query.includes('bike') || query.includes('cycl') ||
+      query.includes('biked') || query.includes('cycled to')
+    ) {
       factorName = 'walking_cycling';
-      descMode = 'Biking/Walking';
+      descMode   = 'Biking/Walking';
     } else {
-      // Look up profile mode
-      if (factorName.includes('suv')) descMode = 'SUV gas car';
-      else if (factorName.includes('medium')) descMode = 'gasoline car';
-      else if (factorName.includes('hybrid')) descMode = 'Hybrid vehicle';
+      // Fall back to the user's onboarding transport mode
+      if (factorName.includes('suv'))      descMode = 'SUV gas car';
+      else if (factorName.includes('medium'))   descMode = 'gasoline car';
+      else if (factorName.includes('hybrid'))   descMode = 'Hybrid vehicle';
       else if (factorName.includes('electric')) descMode = 'Electric vehicle';
     }
 
-    const factor = EMISSION_FACTORS.transport[factorName] || 0.18;
-    co2 = distance * factor;
-    description = `Drove ${distance} km in ${descMode}`;
+    const factor = EMISSION_FACTORS.transport[factorName] || EMISSION_FACTORS.transport.gas_medium;
+    co2 = distanceKm * factor;
+    description = `Drove ${Math.round(distanceKm)} km in ${descMode}`;
 
     if (factorName === 'walking_cycling') {
       tip = "Beautiful choice! Biking or walking has a zero-carbon impact. You saved about **3.3 kg CO₂e** compared to driving this distance in a medium gas car.";
@@ -1413,56 +1535,89 @@ function processActivityLog(text) {
   }
   
   // 2. DIET / FOOD PARSE
-  else if (query.includes('burger') || query.includes('beef') || query.includes('steak') || query.includes('meat') || query.includes('chicken') || query.includes('pork') || query.includes('salad') || query.includes('vegan') || query.includes('vegetarian') || query.includes('ate') || query.includes('had') || query.includes('lunch') || query.includes('dinner') || query.includes('meal')) {
+  else if (
+    query.includes('burger') || query.includes('beef') || query.includes('steak') ||
+    query.includes('meat') || query.includes('chicken') || query.includes('pork') ||
+    query.includes('salad') || query.includes('vegan') || query.includes('vegetarian') ||
+    query.includes('ate') || query.includes('had') || query.includes('lunch') ||
+    query.includes('dinner') || query.includes('meal') || query.includes('pizza') ||
+    query.includes('pasta') || query.includes('ordered') || query.includes('takeaway') ||
+    query.includes('takeout') || query.includes('sushi') || query.includes('kebab')
+  ) {
     category = 'Food';
-    
+
     if (query.includes('beef') || query.includes('steak') || query.includes('hamburger') || query.includes('burger')) {
       co2 = EMISSION_FACTORS.meals.beef;
-      description = "Beef burger meal";
-      tip = "Beef has the highest carbon footprint of any food (30x more than tofu). Swapping beef for chicken saves **2.3 kg CO₂e**—equal to driving 12 km!";
-    } else if (query.includes('chicken') || query.includes('pork') || query.includes('fish') || query.includes('meat') || query.includes('poultry')) {
+      description = 'Beef burger meal';
+      tip = 'Beef has the highest carbon footprint of any food (30× more than tofu). Swapping beef for chicken saves **2.3 kg CO₂e**—equal to driving 12 km!';
+    } else if (
+      query.includes('chicken') || query.includes('pork') || query.includes('fish') ||
+      query.includes('poultry') || (query.includes('meat') && !query.includes('no meat'))
+    ) {
       co2 = EMISSION_FACTORS.meals.chicken;
-      description = "Meat/Chicken meal";
-      tip = "Poultry is much better than red meat. Consider a vegetarian alternative next time to save an extra **0.4 kg CO₂e**.";
-    } else if (query.includes('vegan') || query.includes('salad') || query.includes('plant-based') || query.includes('tofu')) {
+      description = 'Meat/Chicken meal';
+      tip = 'Poultry is much better than red meat. Consider a vegetarian alternative next time to save an extra **0.4 kg CO₂e**.';
+    } else if (
+      query.includes('vegan') || query.includes('plant-based') || query.includes('tofu') ||
+      (query.includes('salad') && !query.includes('chicken'))
+    ) {
       co2 = EMISSION_FACTORS.meals.vegan;
-      description = "Vegan plant-based meal";
-      tip = "Wonderful green selection! Plant-based meals have the lowest impact. You saved approximately **2.9 kg CO₂e** compared to a beef meal!";
-    } else if (query.includes('vegetarian') || query.includes('veg') || query.includes('cheese') || query.includes('pizza') || query.includes('eggs')) {
+      description = 'Vegan plant-based meal';
+      tip = 'Wonderful green selection! Plant-based meals have the lowest impact. You saved approximately **2.9 kg CO₂e** compared to a beef meal!';
+    } else if (
+      query.includes('vegetarian') || query.includes('veg') || query.includes('cheese') ||
+      query.includes('pizza') || query.includes('pasta') || query.includes('eggs') ||
+      query.includes('sushi') || query.includes('kebab')
+    ) {
       co2 = EMISSION_FACTORS.meals.vegetarian;
-      description = "Vegetarian meal";
-      tip = "Great vegetarian choice! Reducing meat is one of the most effective personal actions you can take.";
+      description = 'Vegetarian/Mixed meal';
+      tip = 'Great choice! Reducing red meat is one of the most effective personal climate actions you can take.';
     } else {
       co2 = EMISSION_FACTORS.meals.average;
-      description = "Standard dinner/meal";
-      tip = "Every meal choice counts. Emphasizing beans, grains, and greens keeps your footprint low!";
+      description = 'Standard meal';
+      tip = 'Every meal choice counts. Emphasizing beans, grains, and greens keeps your footprint low!';
     }
   }
 
   // 3. CONSUMPTION / SHOPPING PARSE
-  else if (query.includes('bought') || query.includes('purchase') || query.includes('jacket') || query.includes('shoes') || query.includes('shirt') || query.includes('clothes') || query.includes('shopping') || query.includes('jeans') || query.includes('furniture') || query.includes('phone') || query.includes('computer')) {
+  else if (
+    query.includes('bought') || query.includes('purchase') || query.includes('jacket') ||
+    query.includes('shoes') || query.includes('shirt') || query.includes('clothes') ||
+    query.includes('shopping') || query.includes('jeans') || query.includes('furniture') ||
+    query.includes('phone') || query.includes('computer') || query.includes('laptop') ||
+    query.includes('sofa') || query.includes('desk') || query.includes('appliance')
+  ) {
     category = 'Consumption';
-    
+
     if (query.includes('secondhand') || query.includes('thrifted') || query.includes('used') || query.includes('thrift')) {
       co2 = EMISSION_FACTORS.purchases.secondhand_clothing;
-      description = "Secondhand clothing item";
-      tip = "Secondhand is spectacular! It prevents production and shipping emissions, saving over **10 kg CO₂e** compared to a new clothing item.";
-    } else if (query.includes('phone') || query.includes('computer') || query.includes('electronics') || query.includes('tv')) {
+      description = 'Secondhand clothing item';
+      tip = 'Secondhand is spectacular! It prevents production and shipping emissions, saving over **10 kg CO₂e** compared to a new clothing item.';
+    } else if (
+      query.includes('phone') || query.includes('computer') || query.includes('laptop') ||
+      query.includes('electronics') || query.includes('tv') || query.includes('appliance')
+    ) {
       co2 = EMISSION_FACTORS.purchases.electronics;
-      description = "New electronics purchase";
-      tip = "Electronics require massive manufacturing footprints. Maximize the lifespan of your devices and recycle them responsibly when they break.";
-    } else if (query.includes('furniture') || query.includes('chair') || query.includes('table')) {
+      description = 'New electronics purchase';
+      tip = 'Electronics require massive manufacturing footprints. Maximise the lifespan of your devices and recycle them responsibly when they break.';
+    } else if (
+      query.includes('furniture') || query.includes('chair') || query.includes('table') ||
+      query.includes('sofa') || query.includes('desk')
+    ) {
       co2 = EMISSION_FACTORS.purchases.furniture;
-      description = "New furniture piece";
-      tip = "Thrifting vintage furniture is a stylish, sustainable alternative that saves carbon and wood resources.";
-    } else if (query.includes('jacket') || query.includes('shoes') || query.includes('shirt') || query.includes('clothes') || query.includes('jeans')) {
+      description = 'New furniture piece';
+      tip = 'Thrifting vintage furniture is a stylish, sustainable alternative that saves carbon and wood resources.';
+    } else if (
+      query.includes('jacket') || query.includes('shoes') || query.includes('shirt') ||
+      query.includes('clothes') || query.includes('jeans')
+    ) {
       co2 = EMISSION_FACTORS.purchases.new_clothing;
-      description = "New clothing purchase";
-      tip = "Fast fashion has high water and carbon impacts. Try buying high-quality, durable garments or shopping secondhand.";
+      description = 'New clothing purchase';
+      tip = 'Fast fashion has high water and carbon impacts. Try buying high-quality, durable garments or shopping secondhand.';
     } else {
       co2 = EMISSION_FACTORS.purchases.miscellaneous;
-      description = "New item purchase";
-      tip = "Before buying, ask yourself: do I really need this new item, or can I rent, repair, or buy it secondhand?";
+      description = 'New item purchase';
+      tip = 'Before buying, ask yourself: do I really need this new item, or can I rent, repair, or buy it secondhand?';
     }
   }
 
@@ -1545,38 +1700,51 @@ function processActivityLog(text) {
   persistLogToServer(newLog);
   
   // Render Assistant validation response
+  const co2Sign = co2 >= 0 ? '+' : '';
   const responses = [
-    `✔️ **Logged:** *${description}* (+**${co2.toFixed(1)} kg CO₂e**).<br><br>${tip}`,
-    `🌍 Saved to category **${category}**: *${description}* (+**${co2.toFixed(1)} kg CO₂e**).<br><br>${tip}`,
-    `👍 Got it! *${description}* (+**${co2.toFixed(1)} kg CO₂e**) has been tracked.<br><br>${tip}`
+    `✔️ **Logged:** *${description}* (${co2Sign}**${co2.toFixed(1)} kg CO₂e**).<br><br>${tip}`,
+    `🌍 Saved to category **${category}**: *${description}* (${co2Sign}**${co2.toFixed(1)} kg CO₂e**).<br><br>${tip}`,
+    `👍 Got it! *${description}* (${co2Sign}**${co2.toFixed(1)} kg CO₂e**) has been tracked.<br><br>${tip}`
   ];
+
+  // Check milestone thresholds and generate a celebration message if reached
+  const milestoneMessage = checkMilestones();
   
-  // Milestones celebration triggers
+  appendAssistantMessage(responses[Math.floor(Math.random() * responses.length)] + milestoneMessage);
+}
+
+/**
+ * Check whether any milestone thresholds have been newly crossed,
+ * trigger the visual pulse animation, and return a celebration message.
+ * Called after every activity log is added.
+ * @returns {string} An HTML milestone message string, or '' if no milestone reached.
+ */
+function checkMilestones() {
   let milestoneMessage = '';
   const loggedTotal = state.logs.reduce((acc, curr) => acc + curr.co2, 0);
-  
-  // Check if they hit first 10kg saved (if habits checked count is positive)
+  void loggedTotal; // suppress unused-variable lint; reserved for future log-total milestones
+
   let habitsSavings = 0;
   state.habits.forEach(h => { if (h.checked) habitsSavings += h.impact; });
-  
-  // Milestone flags trigger once
+
   if (habitsSavings >= 10 && !state.milestone_10kg) {
     state.milestone_10kg = true;
     milestoneMessage = `<br><br>🏆 <strong>Milestone Unlocked!</strong> You have saved your first <strong>10 kg CO₂e</strong> through your habit changes! That's equivalent to planting a new tree seedling growing for 10 years! 🌳 Keep up the fantastic effort!`;
     saveState();
     triggerPulseMilestone();
   }
-  
-  appendAssistantMessage(responses[Math.floor(Math.random() * responses.length)] + milestoneMessage);
+  return milestoneMessage;
 }
 
+/**
+ * Trigger a CSS pulse animation on the savings stat card
+ * to visually celebrate a milestone achievement.
+ */
 function triggerPulseMilestone() {
   const savingsCard = document.querySelector('.stats-grid .stat-card:nth-child(3)');
   if (savingsCard) {
     savingsCard.classList.add('pulse-milestone');
-    setTimeout(() => {
-      savingsCard.classList.remove('pulse-milestone');
-    }, 4500);
+    setTimeout(() => savingsCard.classList.remove('pulse-milestone'), 4500);
   }
 }
 
@@ -1803,6 +1971,11 @@ function initGuestLogin() {
 
 // --- Ecosystem Event Listeners & Integrations ---
 
+/**
+ * Wire up mobile tab navigation buttons.
+ * Shows the panel corresponding to the active tab and hides the other two,
+ * providing a single-column layout on narrow screens.
+ */
 function initMobileTabs() {
   const tabs = document.querySelectorAll('.mobile-tab-btn');
   const panels = document.querySelectorAll('.mobile-panel');
@@ -1841,6 +2014,10 @@ function initMobileTabs() {
   });
 }
 
+/**
+ * Attach click handlers and keyboard shortcuts to the ecosystem action buttons
+ * ("Water Tree" and "Cleanse Air") and wire the CO₂ simulator slider.
+ */
 function initEcosystemEvents() {
   const btnLive = document.getElementById('btn-mode-live');
   const btnSim = document.getElementById('btn-mode-sim');
@@ -2152,6 +2329,11 @@ function updateHumanLifespan(loggedTotal) {
 // --- Live Geolocation & Weather Controller ---
 
 
+/**
+ * Fetch live weather data for the user's location using the browser Geolocation API.
+ * Falls back to a default capital-city coordinate based on the user's country profile
+ * if geolocation is denied, unavailable, or times out after 8 seconds.
+ */
 function fetchLiveWeather() {
   const iconEl = document.getElementById('weather-icon');
   const tempEl = document.getElementById('weather-temp');
@@ -2188,6 +2370,13 @@ function fetchLiveWeather() {
   }
 }
 
+/**
+ * Fetch weather data for a specific coordinate from the Open-Meteo API and
+ * update the weather widget, Google Maps iframe, and 3D ecosystem scene.
+ * @param {number} lat   - Latitude of the target location.
+ * @param {number} lon   - Longitude of the target location.
+ * @param {string} label - Human-readable location name for the weather widget.
+ */
 function getWeatherData(lat, lon, label) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,is_day,weather_code,wind_speed_10m`;
   
@@ -2230,6 +2419,13 @@ function getWeatherData(lat, lon, label) {
     });
 }
 
+/**
+ * Resolve a WMO Weather Interpretation Code (used by Open-Meteo API) into
+ * a human-readable text label and representative emoji icon.
+ * Falls back to Sunny/☀️ for any unrecognised code.
+ * @param   {number} code - WMO weather code from the Open-Meteo current weather response.
+ * @returns {{ icon: string, text: string }} Display object with emoji icon and label.
+ */
 function resolveWeatherCode(code) {
   if (code === 0) return { icon: "☀️", text: "Sunny" };
   if ([1, 2, 3].includes(code)) return { icon: "⛅", text: "Cloudy" };
@@ -2243,8 +2439,11 @@ function resolveWeatherCode(code) {
   return { icon: "☀️", text: "Clear" };
 }
 
-// --- Google Line Chart (Global Warming) ---
-
+/**
+ * Render the global temperature anomaly area chart using the Google Charts API.
+ * Uses historical NOAA GISS Surface Temperature Analysis data (1880–2026).
+ * No-ops silently if the Google Charts library has not yet loaded.
+ */
 function drawGlobalWarmingChart() {
   if (typeof google === 'undefined' || !google.visualization || !document.getElementById('climate-warming-chart')) return;
   
@@ -2292,36 +2491,41 @@ function drawGlobalWarmingChart() {
   }
 }
 
+/**
+ * Update the planetary projection panel from the current weekly CO₂ total.
+ * Computes annualised emissions, trees-needed offset, and a nano-scale
+ * temperature contribution, then sets the visual impact badge accordingly.
+ * @param {number} loggedTotal - Total CO₂e (kg) logged in the current weekly window.
+ */
 function updatePlanetaryProjection(loggedTotal) {
-  const yearlyCo2El = document.getElementById('proj-yearly-co2');
+  const yearlyCo2El   = document.getElementById('proj-yearly-co2');
   const treesNeededEl = document.getElementById('proj-trees-needed');
-  const tempRiseEl = document.getElementById('proj-temp-rise');
-  const badgeEl = document.getElementById('projection-impact-badge');
-  
+  const tempRiseEl    = document.getElementById('proj-temp-rise');
+  const badgeEl       = document.getElementById('projection-impact-badge');
+
   if (!yearlyCo2El || !treesNeededEl || !tempRiseEl || !badgeEl) return;
-  
-  const yearlyCo2Kg = loggedTotal * 52;
+
+  const yearlyCo2Kg     = loggedTotal * WEEKS_PER_YEAR;
   const yearlyCo2Tonnes = (yearlyCo2Kg / 1000).toFixed(2);
-  const treesRequired = Math.round(yearlyCo2Kg / 22);
-  const tempRiseNano = (yearlyCo2Kg * 0.0015).toFixed(3);
-  
-  yearlyCo2El.textContent = `${yearlyCo2Tonnes} tonnes`;
+  const treesRequired   = Math.round(yearlyCo2Kg / TREE_ANNUAL_CO2_ABSORPTION_KG);
+  const tempRiseNano    = (yearlyCo2Kg * 0.0015).toFixed(3);
+
+  yearlyCo2El.textContent  = `${yearlyCo2Tonnes} tonnes`;
   treesNeededEl.textContent = `${treesRequired.toLocaleString()} trees`;
-  tempRiseEl.textContent = tempRiseNano;
-  
-  const weeklySustainable = 2000 / 52;
-  if (loggedTotal <= weeklySustainable) {
-    badgeEl.textContent = "Sustainable";
-    badgeEl.style.background = "rgba(16, 185, 129, 0.1)";
-    badgeEl.style.color = "var(--primary)";
-  } else if (loggedTotal <= weeklySustainable * 2) {
-    badgeEl.textContent = "Moderate Impact";
-    badgeEl.style.background = "rgba(251, 191, 36, 0.1)";
-    badgeEl.style.color = "var(--color-energy)";
+  tempRiseEl.textContent    = tempRiseNano;
+
+  if (loggedTotal <= WEEKLY_SUSTAINABLE_KG) {
+    badgeEl.textContent       = 'Sustainable';
+    badgeEl.style.background  = 'rgba(16, 185, 129, 0.1)';
+    badgeEl.style.color       = 'var(--primary)';
+  } else if (loggedTotal <= WEEKLY_SUSTAINABLE_KG * 2) {
+    badgeEl.textContent       = 'Moderate Impact';
+    badgeEl.style.background  = 'rgba(251, 191, 36, 0.1)';
+    badgeEl.style.color       = 'var(--color-energy)';
   } else {
-    badgeEl.textContent = "High Strain";
-    badgeEl.style.background = "rgba(244, 63, 94, 0.1)";
-    badgeEl.style.color = "var(--color-travel)";
+    badgeEl.textContent       = 'High Strain';
+    badgeEl.style.background  = 'rgba(244, 63, 94, 0.1)';
+    badgeEl.style.color       = 'var(--color-travel)';
   }
 }
 

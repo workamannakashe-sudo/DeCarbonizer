@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DeCarbonizer — Personal Carbon Footprint Tracker & Assistant</title>
+  <meta name="theme-color" content="#10b981">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="/">
+  <title>DeCarbonizer — Personal Carbon Footprint Tracker &amp; Assistant</title>
   <meta name="description" content="Track and reduce your environmental footprint with friendly, AI-driven carbon insights, daily habits, and easy conversational logging.">
   <link rel="stylesheet" href="styles.css">
   
@@ -51,7 +55,7 @@
   </div>
 
   <!-- Main Application Wrapper -->
-  <div id="app-container">
+  <div id="app-container" role="main">
     
     <!-- Mobile Navigation Tabs (Only visible on mobile) -->
     <div class="mobile-tabs-nav" role="tablist" aria-label="Application Panels">
@@ -374,7 +378,7 @@
         <div class="maps-card glass-panel" style="padding: 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.015); display: flex; flex-direction: column; gap: 10px;">
           <h3 class="insight-section-title" style="margin-bottom: 5px;">📍 Live Climate Map (Google Maps)</h3>
           <div id="google-maps-container" style="width: 100%; height: 180px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08);">
-            <iframe id="google-maps-iframe" width="100%" height="100%" frameborder="0" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <iframe id="google-maps-iframe" title="Live climate map of your location" width="100%" height="100%" frameborder="0" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
           </div>
         </div>
 

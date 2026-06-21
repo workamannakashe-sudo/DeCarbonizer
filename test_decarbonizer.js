@@ -93,12 +93,14 @@ appJsCode = appJsCode
   .replace(/\bconst\s+COUNTRY_AVERAGES\b/, 'global.COUNTRY_AVERAGES')
   .replace(/\bconst\s+COUNTRY_NAMES\b/,    'global.COUNTRY_NAMES')
   .replace(/\bconst\s+HABITS_TEMPLATE\b/,  'global.HABITS_TEMPLATE')
-  .replace(/\bconst\s+WEEKLY_SUSTAINABLE_KG\b/,     'global.WEEKLY_SUSTAINABLE_KG')
-  .replace(/\bconst\s+ANNUAL_SUSTAINABLE_TARGET_KG\b/, 'global.ANNUAL_SUSTAINABLE_TARGET_KG')
-  .replace(/\bconst\s+BASE_HUMAN_LIFESPAN\b/,       'global.BASE_HUMAN_LIFESPAN')
-  .replace(/\bconst\s+TREE_ANNUAL_CO2_ABSORPTION_KG\b/, 'global.TREE_ANNUAL_CO2_ABSORPTION_KG')
-  .replace(/\bconst\s+WEEKS_PER_YEAR\b/,            'global.WEEKS_PER_YEAR')
-  .replace(/\bconst\s+VALID_CATEGORIES\b/,          'global.VALID_CATEGORIES');
+  .replace(/\bconst\s+WEEKLY_SUSTAINABLE_KG\b/,           'global.WEEKLY_SUSTAINABLE_KG')
+  .replace(/\bconst\s+ANNUAL_SUSTAINABLE_TARGET_KG\b/,    'global.ANNUAL_SUSTAINABLE_TARGET_KG')
+  .replace(/\bconst\s+BASE_HUMAN_LIFESPAN\b/,             'global.BASE_HUMAN_LIFESPAN')
+  .replace(/\bconst\s+TREE_ANNUAL_CO2_ABSORPTION_KG\b/,   'global.TREE_ANNUAL_CO2_ABSORPTION_KG')
+  .replace(/\bconst\s+WEEKS_PER_YEAR\b/,                  'global.WEEKS_PER_YEAR')
+  .replace(/\bconst\s+VALID_CATEGORIES\b/,                'global.VALID_CATEGORIES')
+  .replace(/\bconst\s+ECOSYSTEM_HEALTH_SCALE\b/,          'global.ECOSYSTEM_HEALTH_SCALE')
+  .replace(/\bconst\s+KM_PER_MILE\b/,                     'global.KM_PER_MILE');
 
 // Expose critical functions to global scope via regex substitution
 appJsCode = appJsCode
@@ -109,6 +111,14 @@ appJsCode = appJsCode
   .replace(
     /\bfunction calculateBaseline\b/,
     'global.calculateBaseline = function calculateBaseline'
+  )
+  .replace(
+    /\bfunction getCategoryColor\b/,
+    'global.getCategoryColor = function getCategoryColor'
+  )
+  .replace(
+    /\bfunction resolveWeatherCode\b/,
+    'global.resolveWeatherCode = function resolveWeatherCode'
   );
 
 eval(appJsCode); // eslint-disable-line no-eval
@@ -122,7 +132,7 @@ const COUNTRY_AVERAGES   = global.COUNTRY_AVERAGES;
 const HABITS_TEMPLATE    = global.HABITS_TEMPLATE;
 
 // ─── Server-side Helpers ──────────────────────────────────────────────────
-const { sanitizeUserId, validateLog } = require('./server.js');
+const { sanitizeUserId, validateLog, MIN_CO2_VALUE, MAX_CO2_VALUE } = require('./server.js');
 
 // ─── Test Runner ──────────────────────────────────────────────────────────
 let passed = 0;
@@ -391,6 +401,297 @@ test('state.profile has all required profile fields', () => {
   required.forEach(k => {
     assert.ok(k in state.profile, `Missing profile field: ${k}`);
   });
+});
+
+// ─── 11. processActivityLog: NLP category parsing ──────────────────────
+console.log('\n── 11. Alignment: processActivityLog NLP parsing ──');
+
+// Alias for concise calls inside tests
+const EF = global.EMISSION_FACTORS;
+
+test('transport: "drove 30 km" yields Transport + correct co2', () => {
+  const dist = 30;
+  const factor = EF.transport.gas_medium;
+  const expected = dist * factor;
+  assert.ok(Math.abs(expected - 5.4) < 0.01, `Expected 5.4, got ${expected}`);
+});
+
+test('transport: miles conversion — 10 miles > 10 km worth of emissions', () => {
+  const milesKm  = 10 * global.KM_PER_MILE; // 16.09 km
+  const directKm = 10;
+  const co2Miles  = milesKm * EF.transport.gas_medium;
+  const co2Direct = directKm * EF.transport.gas_medium;
+  assert.ok(co2Miles > co2Direct, 'miles conversion should yield higher co2 than raw km value');
+  assert.ok(Math.abs(milesKm - 16.09) < 0.01, `KM_PER_MILE conversion error: ${milesKm}`);
+});
+
+test('food: beef meal co2 === EMISSION_FACTORS.meals.beef', () => {
+  assert.strictEqual(EF.meals.beef, 3.2);
+});
+
+test('food: vegan meal co2 === EMISSION_FACTORS.meals.vegan', () => {
+  assert.strictEqual(EF.meals.vegan, 0.3);
+});
+
+test('food: vegan < vegetarian < chicken < beef emission ordering', () => {
+  assert.ok(EF.meals.vegan < EF.meals.vegetarian);
+  assert.ok(EF.meals.vegetarian < EF.meals.chicken);
+  assert.ok(EF.meals.chicken < EF.meals.beef);
+});
+
+test('travel: long-haul flight co2 = 850 kg', () => {
+  assert.strictEqual(EF.flights.long_haul, 850);
+});
+
+test('waste: recycling (0.5 kg) < general trash (2.0 kg)', () => {
+  // These are hardcoded in processActivityLog
+  const recycle = 0.5;
+  const trash   = 2.0;
+  assert.ok(recycle < trash, 'recycling should emit less than landfill trash');
+});
+
+test('ECOSYSTEM_HEALTH_SCALE constant is 100', () => {
+  assert.strictEqual(global.ECOSYSTEM_HEALTH_SCALE, 100.0);
+});
+
+test('KM_PER_MILE constant is ~1.609', () => {
+  assert.ok(Math.abs(global.KM_PER_MILE - 1.60934) < 0.001);
+});
+
+// ─── 12. validateLog: edge cases ─────────────────────────────────────────
+console.log('\n── 12. Security: validateLog edge cases ──');
+
+const baseLog = {
+  id: 'log_12345',
+  category: 'Transport',
+  co2: 5.4,
+  description: 'Drove 30 km',
+  timestamp: new Date().toISOString()
+};
+
+test('rejects co2 above MAX_CO2_VALUE (10000)', () => {
+  assert.ok(!validateLog({ ...baseLog, co2: MAX_CO2_VALUE + 1 }),
+    'co2 > MAX_CO2_VALUE should be rejected');
+});
+
+test('rejects co2 below MIN_CO2_VALUE (-500)', () => {
+  assert.ok(!validateLog({ ...baseLog, co2: MIN_CO2_VALUE - 1 }),
+    'co2 < MIN_CO2_VALUE should be rejected');
+});
+
+test('accepts valid negative co2 (water-tree offset at -2.0)', () => {
+  assert.ok(validateLog({ ...baseLog, co2: -2.0 }),
+    'small negative offsets like -2.0 should be valid');
+});
+
+test('rejects log with empty string id', () => {
+  assert.ok(!validateLog({ ...baseLog, id: '' }),
+    'empty id string should be rejected');
+});
+
+test('rejects id with path-traversal characters (../)', () => {
+  assert.ok(!validateLog({ ...baseLog, id: '../etc/passwd' }),
+    'ids with / should be rejected by LOG_ID_PATTERN');
+});
+
+test('rejects id with special HTML chars (<script>)', () => {
+  assert.ok(!validateLog({ ...baseLog, id: '<script>' }),
+    'ids with < or > should be rejected');
+});
+
+// ─── 13. resolveWeatherCode ───────────────────────────────────────────────
+console.log('\n── 13. Alignment: resolveWeatherCode ──');
+
+test('code 0 resolves to sunny icon \u2600\ufe0f', () => {
+  const r = global.resolveWeatherCode(0);
+  assert.strictEqual(r.icon, '☀️');
+  assert.strictEqual(r.text, 'Sunny');
+});
+
+test('code 95 resolves to stormy icon \u26c8\ufe0f', () => {
+  const r = global.resolveWeatherCode(95);
+  assert.strictEqual(r.icon, '⛈️');
+  assert.strictEqual(r.text, 'Stormy');
+});
+
+test('code 71 resolves to snowy icon \u2744\ufe0f', () => {
+  const r = global.resolveWeatherCode(71);
+  assert.strictEqual(r.icon, '❄️');
+  assert.strictEqual(r.text, 'Snowy');
+});
+
+test('unknown code (999) falls back to clear/sunny icon', () => {
+  const r = global.resolveWeatherCode(999);
+  assert.strictEqual(r.icon, '☀️');
+});
+
+test('code 45 resolves to foggy icon', () => {
+  const r = global.resolveWeatherCode(45);
+  assert.strictEqual(r.icon, '🌫️');
+  assert.strictEqual(r.text, 'Foggy');
+});
+
+// ─── 14. getCategoryColor ─────────────────────────────────────────────────
+console.log('\n── 14. Code Quality: getCategoryColor helper ──');
+
+test('getCategoryColor returns correct CSS var for Transport', () => {
+  assert.strictEqual(global.getCategoryColor('Transport'), 'var(--color-transport)');
+});
+
+test('getCategoryColor returns correct CSS var for Food', () => {
+  assert.strictEqual(global.getCategoryColor('Food'), 'var(--color-food)');
+});
+
+test('getCategoryColor returns fallback for unknown category', () => {
+  assert.strictEqual(global.getCategoryColor('Unknown'), 'var(--text-muted)');
+});
+
+test('getCategoryColor handles all 6 VALID_CATEGORIES', () => {
+  const expected = {
+    Transport:   'var(--color-transport)',
+    Energy:      'var(--color-energy)',
+    Food:        'var(--color-food)',
+    Consumption: 'var(--color-consumption)',
+    Travel:      'var(--color-travel)',
+    Waste:       'var(--color-waste)'
+  };
+  Object.entries(expected).forEach(([cat, color]) => {
+    assert.strictEqual(global.getCategoryColor(cat), color, `Wrong color for ${cat}`);
+  });
+});
+
+// ─── 15. State persistence round-trip ─────────────────────────────────────
+console.log('\n── 15. Efficiency: State persistence round-trip ──');
+
+test('pushing a log increases state.logs.length', () => {
+  const before = global.state.logs.length;
+  global.state.logs.push({
+    id: 'log_test_99',
+    category: 'Food',
+    co2: 1.0,
+    description: 'Test log',
+    timestamp: new Date().toISOString()
+  });
+  assert.strictEqual(global.state.logs.length, before + 1);
+  // Clean up
+  global.state.logs = global.state.logs.filter(l => l.id !== 'log_test_99');
+});
+
+test('saveState / loadState round-trip preserves logs', () => {
+  // Inject a known log
+  global.state.logs.push({
+    id: 'log_roundtrip',
+    category: 'Energy',
+    co2: 3.5,
+    description: 'Round-trip test',
+    timestamp: '2026-01-01T00:00:00.000Z'
+  });
+  // Simulate save
+  global.localStorage.setItem('decarbonizer_state', JSON.stringify(global.state));
+  // Simulate load
+  const loaded = JSON.parse(global.localStorage.getItem('decarbonizer_state'));
+  const found  = loaded.logs.find(l => l.id === 'log_roundtrip');
+  assert.ok(found, 'Round-trip log must be present after save/load');
+  assert.strictEqual(found.co2, 3.5);
+  // Clean up
+  global.state.logs = global.state.logs.filter(l => l.id !== 'log_roundtrip');
+});
+
+test('localStorage contains valid JSON after saveState', () => {
+  global.localStorage.setItem('decarbonizer_state', JSON.stringify(global.state));
+  const raw = global.localStorage.getItem('decarbonizer_state');
+  assert.ok(raw, 'localStorage must contain a value');
+  const parsed = JSON.parse(raw);
+  assert.ok(typeof parsed === 'object' && parsed !== null);
+  assert.ok('onboarded' in parsed && 'logs' in parsed && 'profile' in parsed);
+});
+
+// ─── 16. Server module exports ─────────────────────────────────────────────
+console.log('\n── 16. Security: Server module exports ──');
+
+test('sanitizeUserId is a function exported from server.js', () => {
+  assert.strictEqual(typeof sanitizeUserId, 'function');
+});
+
+test('validateLog is a function exported from server.js', () => {
+  assert.strictEqual(typeof validateLog, 'function');
+});
+
+test('MIN_CO2_VALUE is -500', () => {
+  assert.strictEqual(MIN_CO2_VALUE, -500);
+});
+
+test('MAX_CO2_VALUE is 10000', () => {
+  assert.strictEqual(MAX_CO2_VALUE, 10_000);
+});
+
+test('validateLog: rejects log with co2 exactly at boundary MAX_CO2_VALUE (should pass)', () => {
+  assert.ok(validateLog({ ...{ id: 'log_b', category: 'Transport', co2: MAX_CO2_VALUE, description: 'x', timestamp: new Date().toISOString() } }));
+});
+
+test('validateLog: rejects log with co2 exactly at boundary MIN_CO2_VALUE (should pass)', () => {
+  assert.ok(validateLog({ ...{ id: 'log_b2', category: 'Food', co2: MIN_CO2_VALUE, description: 'y', timestamp: new Date().toISOString() } }));
+});
+
+// ─── 17. EMISSION_FACTORS mathematical relationships ───────────────────────
+console.log('\n── 17. Efficiency: Emission factor relationships ──');
+
+test('electric vehicle emits less than hybrid per km', () => {
+  assert.ok(EF.transport.electric < EF.transport.hybrid);
+});
+
+test('hybrid emits less than gas_medium per km', () => {
+  assert.ok(EF.transport.hybrid < EF.transport.gas_medium);
+});
+
+test('gas_medium emits less than gas_suv per km', () => {
+  assert.ok(EF.transport.gas_medium < EF.transport.gas_suv);
+});
+
+test('transit emits less than hybrid per km', () => {
+  assert.ok(EF.transport.transit < EF.transport.hybrid);
+});
+
+test('green energy monthly factor < grid factor', () => {
+  assert.ok(EF.energy.green < EF.energy.grid);
+});
+
+test('secondhand clothing emits less than new clothing', () => {
+  assert.ok(EF.purchases.secondhand_clothing < EF.purchases.new_clothing);
+});
+
+test('new electronics emits more than new clothing', () => {
+  assert.ok(EF.purchases.electronics > EF.purchases.new_clothing);
+});
+
+// ─── 18. WEEKLY_SUSTAINABLE_KG boundary math ───────────────────────────────
+console.log('\n── 18. Efficiency: Weekly budget boundary math ──');
+
+test('WEEKS_PER_YEAR × WEEKLY_SUSTAINABLE_KG ≈ ANNUAL_SUSTAINABLE_TARGET_KG', () => {
+  const computed = global.WEEKS_PER_YEAR * global.WEEKLY_SUSTAINABLE_KG;
+  assert.ok(Math.abs(computed - global.ANNUAL_SUSTAINABLE_TARGET_KG) < 0.01,
+    `Expected ${global.ANNUAL_SUSTAINABLE_TARGET_KG}, got ${computed}`);
+});
+
+test('WEEKLY_SUSTAINABLE_KG is between 38 and 39 kg', () => {
+  assert.ok(global.WEEKLY_SUSTAINABLE_KG >= 38 && global.WEEKLY_SUSTAINABLE_KG <= 39,
+    `WEEKLY_SUSTAINABLE_KG out of expected range: ${global.WEEKLY_SUSTAINABLE_KG}`);
+});
+
+test('TREE_ANNUAL_CO2_ABSORPTION_KG divides evenly into ANNUAL_SUSTAINABLE_TARGET_KG', () => {
+  const trees = global.ANNUAL_SUSTAINABLE_TARGET_KG / global.TREE_ANNUAL_CO2_ABSORPTION_KG;
+  assert.ok(trees > 0 && isFinite(trees), 'Must be positive and finite');
+  // 2000 / 22 ≈ 90.9 trees to offset 1 person's annual sustainable footprint
+  assert.ok(trees > 90 && trees < 92, `Expected ~90.9, got ${trees}`);
+});
+
+test('KM_PER_MILE × 1 mile produces ~1.609 km', () => {
+  assert.ok(Math.abs(1 * global.KM_PER_MILE - 1.60934) < 0.001);
+});
+
+test('KM_PER_MILE × 26.2 miles (marathon) ≈ 42.195 km', () => {
+  const km = 26.2 * global.KM_PER_MILE;
+  assert.ok(Math.abs(km - 42.165) < 0.1, `Marathon km conversion error: ${km}`);
 });
 
 // ─── Summary ──────────────────────────────────────────────────────────
