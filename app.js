@@ -596,33 +596,47 @@ function getCategoryColor(category) {
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', () => {
-  loadState();
-  initOnboarding();
-  initMainApp();
-  initGoogleServices();
-  initGuestLogin();
-  initFirebase();
-  syncDatabaseData();
+  try { loadState(); } catch (e) { console.warn('loadState error:', e); }
+  try { initOnboarding(); } catch (e) { console.warn('initOnboarding error:', e); }
+  try { initMainApp(); } catch (e) { console.warn('initMainApp error:', e); }
+  try { initGoogleServices(); } catch (e) { console.warn('initGoogleServices error:', e); }
+  try { initGuestLogin(); } catch (e) { console.warn('initGuestLogin error:', e); }
+  try { initFirebase(); } catch (e) { console.warn('initFirebase error:', e); }
+  try { syncDatabaseData(); } catch (e) { console.warn('syncDatabaseData error:', e); }
   
   // Initialize Mobile Tab switcher
-  initMobileTabs();
+  try { initMobileTabs(); } catch (e) { console.warn('initMobileTabs error:', e); }
   
   // Initialize 3D Ecosystem Tree Visualizer
-  window.ecosystem3D = new Ecosystem3D('canvas-container');
-  
-  // Seed tree history on fresh load if needed
-  if (state.onboarded && (!state.treeHistory || state.treeHistory.length === 0)) {
-    setupDefaultTreeHistory();
+  try {
+    window.ecosystem3D = new Ecosystem3D('canvas-container');
+  } catch (e) {
+    console.warn('Ecosystem3D init error:', e);
   }
   
-  initEcosystemEvents();
+  // Seed tree history on fresh load if needed
+  try {
+    if (state.onboarded && (!state.treeHistory || state.treeHistory.length === 0)) {
+      setupDefaultTreeHistory();
+    }
+  } catch (e) {
+    console.warn('setupDefaultTreeHistory error:', e);
+  }
+  
+  try { initEcosystemEvents(); } catch (e) { console.warn('initEcosystemEvents error:', e); }
   
   // Render App based on onboarding state
-  if (state.onboarded) {
-    document.getElementById('onboarding-overlay').classList.add('hidden');
-    refreshDashboard();
-  } else {
-    document.getElementById('onboarding-overlay').classList.remove('hidden');
+  try {
+    const overlay = document.getElementById('onboarding-overlay');
+    if (state.onboarded) {
+      if (overlay) overlay.classList.add('hidden');
+      refreshDashboard();
+    } else {
+      if (overlay) overlay.classList.remove('hidden');
+      renderStep(0);
+    }
+  } catch (e) {
+    console.error('App render error:', e);
     renderStep(0);
   }
 });
@@ -1752,15 +1766,24 @@ function triggerPulseMilestone() {
 
 // Google Charts Loader Setup
 window.googleChartsLoaded = false;
-if (typeof google !== 'undefined') {
-  google.charts.load('current', {'packages':['corechart']});
-  google.charts.setOnLoadCallback(() => {
-    window.googleChartsLoaded = true;
-    if (state.onboarded) {
-      refreshDashboard();
+function setupGoogleCharts() {
+  if (typeof google !== 'undefined' && google.charts && typeof google.charts.load === 'function') {
+    try {
+      google.charts.load('current', {'packages':['corechart']});
+      google.charts.setOnLoadCallback(() => {
+        window.googleChartsLoaded = true;
+        if (state.onboarded) {
+          refreshDashboard();
+        }
+      });
+    } catch (e) {
+      console.warn("Google Charts load warning:", e);
     }
-  });
+  } else if (typeof google !== 'undefined') {
+    setTimeout(setupGoogleCharts, 250);
+  }
 }
+setupGoogleCharts();
 
 function drawGoogleChart(trans, energy, food, cons, travel, waste) {
   if (typeof google === 'undefined' || !google.visualization) return;

@@ -8,6 +8,10 @@ class Ecosystem3D {
       console.error(`Container element #${containerId} not found!`);
       return;
     }
+    if (typeof THREE === 'undefined') {
+      console.warn('Three.js library is not loaded. 3D tree canvas disabled.');
+      return;
+    }
 
     this.health = 1.0; // 0.0 (dead) to 1.0 (flourishing)
     this.currentCo2 = 0.0;
