@@ -547,7 +547,7 @@ let currentStep = 0;
  * Sources: IPCC AR6 WG3, EPA eGRID 2023, GHG Protocol.
  * @returns {number} Annual carbon footprint in kg CO₂e.
  */
-global.calculateBaseline = function calculateBaseline() {
+function calculateBaseline() {
   const p = state.profile;
 
   // Transport: kg CO₂e/km × km/week × weeks/year
@@ -861,11 +861,24 @@ function initFocusTrap(overlay, card) {
 function initOnboarding() {
   const nextBtn = document.getElementById('ob-next-btn');
   const prevBtn = document.getElementById('ob-prev-btn');
+  const skipBtn = document.getElementById('ob-skip-btn');
   const overlay = document.getElementById('onboarding-overlay');
   const card = document.getElementById('onboarding-card');
   
   if (overlay && card) {
     initFocusTrap(overlay, card);
+  }
+
+  if (skipBtn) {
+    skipBtn.addEventListener('click', () => {
+      state.onboarded = true;
+      setupDefaultHabits();
+      setupDefaultTreeHistory();
+      saveState();
+      if (overlay) overlay.classList.add('hidden');
+      refreshDashboard();
+      sendSystemGreeting();
+    });
   }
   
   nextBtn.addEventListener('click', () => {

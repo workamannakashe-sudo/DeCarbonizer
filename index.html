@@ -47,9 +47,12 @@
         <!-- Question content gets injected dynamically here -->
       </div>
       
-      <div class="ob-actions">
-        <button id="ob-prev-btn" class="btn-secondary" disabled>Back</button>
-        <button id="ob-next-btn" class="btn-primary">Next</button>
+      <div class="ob-actions" style="display: flex; justify-content: space-between; align-items: center;">
+        <button id="ob-skip-btn" class="btn-secondary" style="font-size: 0.85rem; padding: 6px 14px; opacity: 0.85;">Skip to Dashboard</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="ob-prev-btn" class="btn-secondary" disabled>Back</button>
+          <button id="ob-next-btn" class="btn-primary">Next</button>
+        </div>
       </div>
     </div>
   </div>
