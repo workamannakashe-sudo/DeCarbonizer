@@ -83,7 +83,9 @@ global.MutationObserver = class {
 };
 
 // ─── Load app.js ──────────────────────────────────────────────────────────
-const appJsPath = path.join(__dirname, 'app.js');
+const appJsPath = fs.existsSync(path.join(__dirname, 'js', 'app.js'))
+  ? path.join(__dirname, 'js', 'app.js')
+  : path.join(__dirname, 'app.js');
 let appJsCode   = fs.readFileSync(appJsPath, 'utf8');
 
 // Expose block-scoped top-level declarations to the test scope
