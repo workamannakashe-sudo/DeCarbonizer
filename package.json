@@ -21,6 +21,6 @@
     "test":  "node test_decarbonizer.js"
   },
   "engines": {
-    "node": "20.x"
+    "node": "26.x"
   }
 }
