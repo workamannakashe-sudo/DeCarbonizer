@@ -332,7 +332,7 @@ function requestHandler(req, res) {
 
 const server = http.createServer(requestHandler);
 
-if (require.main === module || !process.env.VERCEL) {
+if (require.main === module) {
   server.listen(PORT, () => {
     console.log(`DeCarbonizer server running on port ${PORT}`);
   });
