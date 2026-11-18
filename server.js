@@ -88,8 +88,10 @@ function validateLog(obj) {
 }
 
 // ─── Database Helpers ─────────────────────────────────────────────────────────
-/** Absolute path to the JSON flat-file database. */
-const DB_PATH = path.join(__dirname, 'data', 'database.json');
+/** Absolute path to the JSON flat-file database. Uses /tmp on serverless (e.g. Vercel) to avoid EROFS. */
+const DB_PATH = process.env.VERCEL
+  ? path.join('/tmp', 'database.json')
+  : path.join(__dirname, 'data', 'database.json');
 
 /**
  * Read the full database file, returning an empty object on any error.
@@ -189,7 +191,7 @@ function sendJson(res, data) {
 }
 
 // ─── HTTP Server ──────────────────────────────────────────────────────────────
-const server = http.createServer((req, res) => {
+function requestHandler(req, res) {
   addSecurityHeaders(res);
 
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -326,11 +328,20 @@ const server = http.createServer((req, res) => {
     });
     res.end(content);
   });
-});
+}
 
-server.listen(PORT, () => {
-  console.log(`DeCarbonizer server running on port ${PORT}`);
-});
+const server = http.createServer(requestHandler);
 
-// Export helpers for unit testing
-module.exports = { sanitizeUserId, validateLog, MIN_CO2_VALUE, MAX_CO2_VALUE };
+if (require.main === module || !process.env.VERCEL) {
+  server.listen(PORT, () => {
+    console.log(`DeCarbonizer server running on port ${PORT}`);
+  });
+}
+
+// Export request handler for serverless environments (e.g. Vercel) while preserving helpers for unit testing
+requestHandler.sanitizeUserId = sanitizeUserId;
+requestHandler.validateLog = validateLog;
+requestHandler.MIN_CO2_VALUE = MIN_CO2_VALUE;
+requestHandler.MAX_CO2_VALUE = MAX_CO2_VALUE;
+
+module.exports = requestHandler;
